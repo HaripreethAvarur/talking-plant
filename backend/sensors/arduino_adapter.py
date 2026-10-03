@@ -31,17 +31,32 @@ class HubFrameDecoder:
         if len(line) > 1024:
             raise ValueError("Arduino frame exceeds 1024 bytes")
         frame = HubFrame.model_validate_json(line)
-        common = dict(plant_id=self.plant_id, source=self.source, device_id=self.device_id,
-                      session_id=self.session_id, timestamp=received_at or utcnow())
+        common = dict(
+            plant_id=self.plant_id,
+            source=self.source,
+            device_id=self.device_id,
+            session_id=self.session_id,
+            timestamp=received_at or utcnow(),
+        )
         calibration = self.calibration
-        moisture = (calibration.convert(frame.moisture_raw)
-                    if calibration and calibration.device_id == self.device_id
-                    else Moisture(raw=frame.moisture_raw, status=Status.uncalibrated))
+        moisture = (
+            calibration.convert(frame.moisture_raw)
+            if calibration and calibration.device_id == self.device_id
+            else Moisture(raw=frame.moisture_raw, status=Status.uncalibrated)
+        )
         observations = [
-            SensorReading(**common, event_id=uuid5(self.session_id, f"sensor:{self.sequence}"),
-                          moisture=moisture, light=Light(value=frame.light_raw, unit="raw", status=Status.ok)),
-            TouchObservation(**common, event_id=uuid5(self.session_id, f"touch:{self.sequence}"),
-                             pressed=bool(frame.touch), status=Status.ok),
+            SensorReading(
+                **common,
+                event_id=uuid5(self.session_id, f"sensor:{self.sequence}"),
+                moisture=moisture,
+                light=Light(value=frame.light_raw, unit="raw", status=Status.ok),
+            ),
+            TouchObservation(
+                **common,
+                event_id=uuid5(self.session_id, f"touch:{self.sequence}"),
+                pressed=bool(frame.touch),
+                status=Status.ok,
+            ),
         ]
         self.sequence += 1
         return observations
