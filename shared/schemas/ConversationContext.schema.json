@@ -42,6 +42,19 @@
           "title": "Device Id",
           "type": "string"
         },
+        "session_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session Id"
+        },
         "status": {
           "$ref": "#/$defs/Status"
         },
@@ -227,6 +240,11 @@
         "thirsty",
         "too_dark",
         "unwell",
+        "grateful",
+        "happy",
+        "thirsty",
+        "too_dark",
+        "unwell",
         "grateful"
       ],
       "title": "Mood",
@@ -263,7 +281,8 @@
           "enum": [
             "mood_changed",
             "watering",
-            "sensor_health"
+            "sensor_health",
+            "touch"
           ],
           "title": "Kind",
           "type": "string"
@@ -417,6 +436,17 @@
           "anyOf": [
             {
               "$ref": "#/$defs/LeafObservation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "touch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TouchObservation"
             },
             {
               "type": "null"
@@ -601,6 +631,83 @@
         }
       },
       "title": "Thresholds",
+      "type": "object"
+    },
+    "TouchObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "event_id": {
+          "format": "uuid",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "plant_id": {
+          "default": "plant-1",
+          "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+          "title": "Plant Id",
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "mock",
+            "replay",
+            "hardware"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "device_id": {
+          "default": "simulator",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Device Id",
+          "type": "string"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session Id"
+        },
+        "pressed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pressed"
+        },
+        "status": {
+          "$ref": "#/$defs/Status",
+          "default": "missing"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "TouchObservation",
       "type": "object"
     }
   },

@@ -8,8 +8,8 @@
 .pytest_cache
 .ruff_cache
 frontend
-backend/conversation
-backend/speech
+backend/speech/cache
+backend/tests
 config
 *.db
 *.db-*

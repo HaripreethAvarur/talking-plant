@@ -111,5 +111,11 @@ export function usePlantVoice() {
 
   useEffect(() => () => stopLoop(), []);
 
-  return { play, unlock, unlocked, speaking, level };
+  const stop = useCallback(() => {
+    audioRef.current?.pause();
+    window.speechSynthesis?.cancel();
+    finish();
+  }, [finish]);
+
+  return { play, stop, unlock, unlocked, speaking, level };
 }

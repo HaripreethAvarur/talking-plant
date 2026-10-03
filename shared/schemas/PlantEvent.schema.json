@@ -6,6 +6,11 @@
         "thirsty",
         "too_dark",
         "unwell",
+        "grateful",
+        "happy",
+        "thirsty",
+        "too_dark",
+        "unwell",
         "grateful"
       ],
       "title": "Mood",
@@ -53,7 +58,8 @@
       "enum": [
         "mood_changed",
         "watering",
-        "sensor_health"
+        "sensor_health",
+        "touch"
       ],
       "title": "Kind",
       "type": "string"

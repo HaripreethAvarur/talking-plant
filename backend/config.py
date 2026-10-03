@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from shared.contracts import PlantProfile
@@ -37,14 +37,27 @@ class Settings(BaseSettings):
     history_limit: int = Field(default=1000, ge=1)
     dedup_limit: int = Field(default=10000, ge=1)
     future_skew_seconds: float = Field(default=5, ge=0)
+    touch_cooldown_seconds: float = Field(default=10, ge=1)
+    touch_listen_seconds: float = Field(default=6, ge=1, le=15)
+    touch_debounce_seconds: float = Field(default=0.04, ge=0)
+    ui_light_raw_max: float = Field(default=1023, gt=0)
+    ui_light_lux_max: float = Field(default=1000, gt=0)
     fetch_enabled: bool = False
     fetch_seed: SecretStr = SecretStr("")
     fetch_target: str = ""
     fetch_port: int = 8001
     fetch_endpoint: str = "http://127.0.0.1:8001/submit"
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def empty_placeholder(cls, value):
+        raw = value.get_secret_value() if isinstance(value, SecretStr) else value
+        return "" if isinstance(raw, str) and raw.startswith("your-") else value
+
     @model_validator(mode="after")
     def remote_auth(self):
+        if self.touch_cooldown_seconds < self.touch_listen_seconds:
+            raise ValueError("TOUCH_COOLDOWN_SECONDS must cover TOUCH_LISTEN_SECONDS")
         if self.deployment_mode not in ("local", "remote"):
             raise ValueError("DEPLOYMENT_MODE must be local or remote")
         if self.deployment_mode == "remote":

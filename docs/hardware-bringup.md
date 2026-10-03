@@ -1,3 +1,9 @@
+# Current hardware path
+
+The team selected Arduino UNO R4 WiFi + Grove touch/light/moisture. Follow
+[Arduino setup](arduino-setup.md) for the implemented firmware and USB bridge.
+The FreeWILi instructions below are retained as an optional legacy path.
+
 # Native macOS bring-up for tomorrow
 
 The laptop owns USB and camera capture. A remote server cannot access these devices.

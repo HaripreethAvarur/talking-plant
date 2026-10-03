@@ -39,6 +39,19 @@
       "title": "Device Id",
       "type": "string"
     },
+    "session_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Session Id"
+    },
     "text": {
       "maxLength": 4000,
       "minLength": 1,

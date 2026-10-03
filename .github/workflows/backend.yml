@@ -11,6 +11,7 @@ jobs:
           cache: pip
       - run: pip install --require-hashes -r requirements-dev.txt
       - run: pip install -r requirements-vision.txt
+      - run: pip install -r requirements-arduino.txt
       - run: ruff check backend shared scripts tests
       - run: ruff format --check backend shared scripts tests
       - run: python -m pytest -q

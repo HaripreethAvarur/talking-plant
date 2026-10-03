@@ -154,6 +154,19 @@
       "title": "Device Id",
       "type": "string"
     },
+    "session_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Session Id"
+    },
     "moisture": {
       "$ref": "#/$defs/Moisture"
     },

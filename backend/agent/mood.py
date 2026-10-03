@@ -109,7 +109,12 @@ class MoodEngine:
             return "stale", []
         if self.state.last_sensor_at and at <= self.state.last_sensor_at:
             return "out_of_order", []
-        identity = (reading.source.value, reading.device_id, reading.moisture.calibration_id)
+        identity = (
+            reading.source.value,
+            reading.device_id,
+            reading.moisture.calibration_id,
+            reading.session_id,
+        )
         if (
             identity != self.identity
             or not self.state.last_sensor_at

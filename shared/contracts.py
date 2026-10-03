@@ -113,12 +113,25 @@ class Observation(Contract):
     timestamp: AwareDatetime = Field(default_factory=utcnow)
     source: Source
     device_id: str = Field(default="simulator", min_length=1, max_length=128)
+    session_id: UUID | None = None
 
 
 class SensorReading(Observation):
     source: Literal[Source.mock, Source.replay, Source.hardware]
     moisture: Moisture = Field(default_factory=Moisture)
     light: Light = Field(default_factory=Light)
+
+
+class TouchObservation(Observation):
+    source: Literal[Source.mock, Source.replay, Source.hardware]
+    pressed: bool | None = None
+    status: Status = Status.missing
+
+    @model_validator(mode="after")
+    def consistent(self):
+        if (self.status == Status.ok) != (self.pressed is not None):
+            raise ValueError("ok touch requires pressed; unavailable touch requires null")
+        return self
 
 
 class LeafObservation(Observation):
@@ -193,6 +206,7 @@ class PlantState(Contract):
     smoothed_moisture_percent: Percent | None = None
     last_sensor_at: AwareDatetime | None = None
     leaf: LeafObservation | None = None
+    touch: TouchObservation | None = None
     last_event_id: UUID | None = None
 
 
@@ -201,7 +215,7 @@ class PlantEvent(Contract):
     plant_id: PlantID
     timestamp: AwareDatetime
     source: Source
-    kind: Literal["mood_changed", "watering", "sensor_health"]
+    kind: Literal["mood_changed", "watering", "sensor_health", "touch"]
     mood: Mood
     reason: str
     suggested_text: str | None = None
@@ -247,6 +261,17 @@ class UIPlantState(BaseModel):
     light_pct: Optional[float] = None
     leaf_issues: list[str] = []
     ts: float = Field(default_factory=now)
+    sensor_health: Status = Status.missing
+    light_unit: Literal["lux", "raw"] | None = None
+    light_value: float | None = None
+
+
+class ListenRequest(Contract):
+    type: Literal["listen_request"] = "listen_request"
+    event_id: UUID
+    plant_id: PlantID
+    timestamp: AwareDatetime
+    duration_ms: int = Field(default=6000, ge=1000, le=15000)
 
 
 class UIChildUtterance(BaseModel):

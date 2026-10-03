@@ -86,7 +86,10 @@ def capture(image_path=None, camera_index=0, region=None, plant_id="plant-1"):
                     return unavailable(
                         plant_id, source, "Camera unavailable. Check index and macOS camera permission."
                     )
-                ok, image = camera.read()
+                # Let auto-exposure settle; initial USB webcam frames can be black.
+                ok, image = False, None
+                for _ in range(5):
+                    ok, image = camera.read()
                 if not ok:
                     return unavailable(plant_id, source, "Camera opened but returned no frame.")
             finally:
@@ -118,11 +121,31 @@ def main():
     parser.add_argument("--roi", type=int, nargs=4, metavar=("X", "Y", "WIDTH", "HEIGHT"), required=True)
     parser.add_argument("--plant-id", default="plant-1")
     parser.add_argument("--publish", action="store_true")
+    parser.add_argument("--loop", action="store_true", help="Capture repeatedly without saving images")
+    parser.add_argument("--interval", type=float, default=10, help="Seconds between captures in loop mode")
+    parser.add_argument("--count", type=int, default=0, help="Loop capture limit; 0 means until Ctrl-C")
     args = parser.parse_args()
-    observation = capture(args.image, args.camera_index, tuple(args.roi), args.plant_id)
-    print(observation.model_dump_json(indent=2))
-    if args.publish:
-        asyncio.run(upload(observation))
+    if args.interval <= 0 or args.count < 0:
+        parser.error("interval must be positive and count nonnegative")
+    try:
+        asyncio.run(observe_loop(args))
+    except KeyboardInterrupt:
+        pass
+
+
+async def observe_loop(args):
+    count = 0
+    while True:
+        observation = await asyncio.to_thread(
+            capture, args.image, args.camera_index, tuple(args.roi), args.plant_id
+        )
+        print(observation.model_dump_json(indent=2), flush=True)
+        if args.publish:
+            await upload(observation)
+        count += 1
+        if not args.loop or (args.count and count >= args.count):
+            break
+        await asyncio.sleep(args.interval)
 
 
 if __name__ == "__main__":
