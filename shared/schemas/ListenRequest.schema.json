@@ -1,0 +1,46 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "type": {
+      "const": "listen_request",
+      "default": "listen_request",
+      "title": "Type",
+      "type": "string"
+    },
+    "event_id": {
+      "format": "uuid",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "plant_id": {
+      "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+      "title": "Plant Id",
+      "type": "string"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "duration_ms": {
+      "default": 6000,
+      "maximum": 15000,
+      "minimum": 1000,
+      "title": "Duration Ms",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "event_id",
+    "plant_id",
+    "timestamp"
+  ],
+  "title": "ListenRequest",
+  "type": "object"
+}

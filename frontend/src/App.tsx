@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import type { ChildUtterance, Health } from "./contracts";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { ChildUtterance, Health, ListenRequest, SpeechAudio } from "./contracts";
 import { Gauge } from "./components/Gauge";
 import { PlantCharacter } from "./components/PlantCharacter";
 import { TalkPanel } from "./components/TalkPanel";
@@ -25,7 +25,14 @@ export default function App() {
   const [childLine, setChildLine] = useState<string | null>(null);
 
   const voice = usePlantVoice();
-  const { state, connected, sendUtterance } = usePlantSocket(voice.play);
+  const talkRef = useRef<ReturnType<typeof usePushToTalk> | null>(null);
+  const onAudio = (audio: SpeechAudio) => { if (!talkRef.current?.isBusy()) void voice.play(audio); };
+  const onListen = (request: ListenRequest) => {
+    if (document.hidden || !voice.unlocked || talkRef.current?.isBusy()) return;
+    voice.stop();
+    void talkRef.current?.startFor(request.duration_ms);
+  };
+  const { state, connected, sendUtterance } = usePlantSocket(onAudio, onListen);
 
   const ask = useCallback(
     (text: string, source: ChildUtterance["source"]) => {
@@ -35,10 +42,14 @@ export default function App() {
     [sendUtterance],
   );
   const talk = usePushToTalk(ask);
+  talkRef.current = talk;
+
+  useEffect(() => { if (!connected) talk.cancel(); }, [connected, talk.cancel]);
 
   useEffect(() => {
-    fetch("/api/health")
-      .then((r) => r.json())
+    const token = sessionStorage.getItem("plantViewerToken");
+    fetch("/api/health", { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((r) => { if (!r.ok) throw new Error("Health unavailable"); return r.json(); })
       .then(setHealth)
       .catch(() => setHealth(FALLBACK_HEALTH));
   }, [connected]);
@@ -52,9 +63,9 @@ export default function App() {
   return (
     <main className={`app mood-${mood}`}>
       {!voice.unlocked && (
-        <button className="wake-overlay" onClick={voice.unlock}>
+        <button className="wake-overlay" onClick={async () => { await voice.unlock(); await talk.prepare(); }}>
           <span className="wake-emoji" aria-hidden>🪴</span>
-          Tap to wake up {health.plant.name}!
+          Tap to wake up {health.plant.name} and enable the microphone!
         </button>
       )}
 
@@ -85,7 +96,7 @@ export default function App() {
         error={talk.error}
         sttAvailable={health.stt}
         quickQuestions={health.quick_questions}
-        onPressStart={talk.start}
+        onPressStart={() => { voice.stop(); void talk.start(); }}
         onPressEnd={talk.stop}
         onQuestion={(q) => ask(q, "button")}
       />

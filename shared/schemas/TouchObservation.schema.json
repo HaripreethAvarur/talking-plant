@@ -41,8 +41,7 @@
       "enum": [
         "mock",
         "replay",
-        "hardware",
-        "image_file"
+        "hardware"
       ],
       "title": "Source",
       "type": "string"
@@ -67,81 +66,26 @@
       "default": null,
       "title": "Session Id"
     },
+    "pressed": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pressed"
+    },
     "status": {
-      "$ref": "#/$defs/Status"
-    },
-    "yellow_proportion": {
-      "anyOf": [
-        {
-          "maximum": 1,
-          "minimum": 0,
-          "type": "number"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Yellow Proportion"
-    },
-    "brown_proportion": {
-      "anyOf": [
-        {
-          "maximum": 1,
-          "minimum": 0,
-          "type": "number"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Brown Proportion"
-    },
-    "method": {
-      "default": "hsv-color-v1",
-      "title": "Method",
-      "type": "string"
-    },
-    "region": {
-      "anyOf": [
-        {
-          "maxItems": 4,
-          "minItems": 4,
-          "prefixItems": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "integer"
-            },
-            {
-              "type": "integer"
-            },
-            {
-              "type": "integer"
-            }
-          ],
-          "type": "array"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Region"
-    },
-    "note": {
-      "default": "Color observation only; not a diagnosis or probability.",
-      "maxLength": 1000,
-      "title": "Note",
-      "type": "string"
+      "$ref": "#/$defs/Status",
+      "default": "missing"
     }
   },
   "required": [
-    "source",
-    "status"
+    "source"
   ],
-  "title": "LeafObservation",
+  "title": "TouchObservation",
   "type": "object"
 }

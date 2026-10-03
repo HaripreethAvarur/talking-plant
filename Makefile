@@ -2,7 +2,7 @@ PYTHON ?= python3
 VENV = .venv/bin
 ARGS ?=
 
-.PHONY: install install-vision install-hardware install-fetch local neon stop native mock replay devices freewili calibrate camera image test lint build schemas smoke migrate
+.PHONY: install install-vision install-hardware install-fetch install-arduino arduino-devices arduino arduino-mock touch local neon stop native mock replay devices freewili calibrate camera image test lint build schemas smoke migrate
 install:
 	$(PYTHON) -m venv .venv
 	$(VENV)/python -m pip install --require-hashes -r requirements-dev.txt
@@ -12,6 +12,16 @@ install-hardware:
 	$(VENV)/python -m pip install --require-hashes -r requirements-hardware.txt
 install-fetch:
 	$(VENV)/python -m pip install --require-hashes -r requirements-fetch.txt
+install-arduino:
+	$(VENV)/python -m pip install -r requirements-arduino.txt
+arduino-devices:
+	$(VENV)/python -m backend.sensors.arduino $(ARGS)
+arduino:
+	$(VENV)/python -m backend.sensors.bridge --mode arduino $(ARGS)
+arduino-mock:
+	$(VENV)/python -m backend.sensors.bridge --mode arduino-mock --count 24 $(ARGS)
+touch:
+	$(VENV)/python -m scripts.touch
 local:
 	docker compose up -d --build --wait
 neon:

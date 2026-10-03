@@ -4,6 +4,7 @@ from collections import OrderedDict, deque
 
 from backend.agent.fetch_adapter import FetchAdapter
 from backend.agent.mood import MoodEngine
+from backend.agent.touch import TouchGate
 from backend.database.store import Store
 from shared.contracts import (
     ConversationContext,
@@ -11,6 +12,7 @@ from shared.contracts import (
     PlantProfile,
     SensorReading,
     StreamMessage,
+    TouchObservation,
     utcnow,
 )
 
@@ -30,6 +32,9 @@ class PlantService:
     def __init__(self, settings):
         self.settings = settings
         self.engine = MoodEngine(settings.profile())
+        self.touch = TouchGate(
+            settings.touch_cooldown_seconds, settings.touch_debounce_seconds, self.engine.t.stale_seconds
+        )
         self.store = Store(settings)
         self.fetch = FetchAdapter(settings)
         self.db_status = "disabled" if self.store.engine is None else "unavailable"
@@ -52,8 +57,10 @@ class PlantService:
             if restored:
                 profile, checkpoint = restored
                 self.engine = MoodEngine(PlantProfile.model_validate(profile))
+                self.touch.stale = self.engine.t.stale_seconds
                 if checkpoint:
                     self.engine.restore(checkpoint)
+                    self.touch.restore(checkpoint.get("touch_gate", {}))
                 self.db_status = "ok"
                 self.db_initialized = True
                 rows = await asyncio.to_thread(
@@ -61,7 +68,7 @@ class PlantService:
                 )
                 for row in reversed(rows):
                     self.history.append(row)
-                    if row["record_type"] in ("mood_changed", "watering", "sensor_health"):
+                    if row["record_type"] in ("mood_changed", "watering", "sensor_health", "touch"):
                         self.events.append(
                             PlantEvent.model_validate({k: v for k, v in row.items() if k != "record_type"})
                         )
@@ -89,7 +96,12 @@ class PlantService:
             return
         rows = []
         if observation:
-            rows.append(record(observation, "sensor" if isinstance(observation, SensorReading) else "leaf"))
+            kind = (
+                "touch_observation"
+                if isinstance(observation, TouchObservation)
+                else ("sensor" if isinstance(observation, SensorReading) else "leaf")
+            )
+            rows.append(record(observation, kind))
         rows += [record(event, event.kind) for event in events]
         self.history.extend(r["payload"] for r in rows)
         self.events.extend(events)
@@ -101,7 +113,7 @@ class PlantService:
                 {
                     "plant_id": self.engine.profile.plant_id,
                     "records": rows,
-                    "checkpoint": self.engine.checkpoint(),
+                    "checkpoint": {**self.engine.checkpoint(), "touch_gate": self.touch.checkpoint()},
                 }
             )
         self.fetch.publish(events)
@@ -123,11 +135,30 @@ class PlantService:
                     self.db_status = "unavailable"
             if duplicate:
                 return {"status": "duplicate", "event_id": key, "events": []}
-            status, events = (
-                self.engine.sensor(observation, now)
-                if isinstance(observation, SensorReading)
-                else self.engine.leaf(observation, now)
-            )
+            if isinstance(observation, TouchObservation):
+                status, triggered = self.touch.observe(observation, now)
+                events = []
+                if status == "accepted":
+                    self.engine.state.touch = observation
+                    self.engine.state.timestamp = now
+                if triggered:
+                    event = PlantEvent(
+                        plant_id=observation.plant_id,
+                        timestamp=observation.timestamp,
+                        source=observation.source,
+                        kind="touch",
+                        mood=self.engine.state.mood,
+                        reason="New touch requests a bounded listening window.",
+                        observation_id=observation.event_id,
+                    )
+                    self.engine.state.last_event_id = event.event_id
+                    events = [event]
+            else:
+                status, events = (
+                    self.engine.sensor(observation, now)
+                    if isinstance(observation, SensorReading)
+                    else self.engine.leaf(observation, now)
+                )
             if status == "accepted":
                 self.seen[key] = True
                 if len(self.seen) > self.settings.dedup_limit:

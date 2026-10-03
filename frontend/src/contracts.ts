@@ -10,6 +10,9 @@ export interface PlantState {
   light_pct: number | null;
   leaf_issues: string[];
   ts: number;
+  sensor_health?: string;
+  light_value?: number | null;
+  light_unit?: "raw" | "lux" | null;
 }
 
 export interface SpeechAudio {
@@ -28,7 +31,16 @@ export interface ChildUtterance {
   ts: number;
 }
 
-export type ServerMessage = PlantState | SpeechAudio;
+export interface ListenRequest {
+  type: "listen_request";
+  schema_version: "1.0";
+  event_id: string;
+  plant_id: string;
+  timestamp: string;
+  duration_ms: number;
+}
+
+export type ServerMessage = PlantState | SpeechAudio | ListenRequest;
 
 export interface Health {
   stt: boolean;

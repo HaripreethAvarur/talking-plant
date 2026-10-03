@@ -10,3 +10,7 @@ backend/speech/cache/
 # Frontend build output
 frontend/dist/
 frontend/.vite/
+
+# Local sensor calibration and native SQLite state
+config/calibration.json
+plant.db*

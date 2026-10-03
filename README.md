@@ -1,68 +1,83 @@
-# talking-plant
+# Talking Plant
 
-A plant that talks to kids: sensors and a camera tell it how it feels, a Fetch.ai
-agent decides its mood, ASI:One words its replies, ElevenLabs gives it a voice,
-and a React character shows its face.
+Arduino sensors and a laptop webcam feed a FastAPI backend. The backend stores
+observations and care events, decides the plant's mood, and sends live updates to
+the React frontend. A touch starts a six-second microphone window; the existing
+speech and conversation modules handle the child's question and the plant's reply.
 
-## Layout
-
-| Path | What | Task |
-| --- | --- | --- |
-| `shared/contracts.py` | JSON messages every part exchanges (`SensorReading`, `LeafObservation`, `ChildUtterance`, `PlantState`, `SpeechAudio`) | 0 |
-| `backend/sensors/` | FreeWILi sensor reader | 1 |
-| `backend/vision/` | Leaf stress checker | 2 |
-| `backend/speech/stt.py` | Child speech-to-text (ElevenLabs) | 3 |
-| `backend/agent/` | Plant Care Agent and mood engine (Fetch.ai) | 4 |
-| `backend/conversation/` | Grounded, kid-safe replies (ASI:One) with scripted fallback | 5 |
-| `backend/database/` | Plant profile and care history (Neon) | 6 |
-| `backend/speech/tts.py` | Plant voice (ElevenLabs) with an offline cache | 7 |
-| `frontend/` | React character UI | 8 |
-| `backend/server.py` | WebSocket bridge between the agent and the UI | 8 |
-| `backend/mock_agent.py` | Stand-in for the agent; replays "dry, then watered" | 0 / 4 |
-
-## Run it
+## Run locally
 
 ```sh
-cp .env.example .env               # fill in keys; placeholders switch on the fallbacks
-pip install -r backend/requirements.txt
-cd frontend && npm install && cd ..
-
-python -m backend.server           # terminal 1: UI bridge on :8000
-cd frontend && npm run dev         # terminal 2: open http://localhost:5173
-python -m backend.mock_agent       # terminal 3: replay the demo sequence (--loop to repeat)
+# First setup only; keep an existing .env and its keys.
+cp .env.example .env
+make install
+make local                       # Docker backend + persistent local PostgreSQL
+npm --prefix frontend install
+npm --prefix frontend run dev    # second terminal: http://localhost:5173
+make arduino-mock                # third terminal: 24-second sensor + touch demo
 ```
 
-Click "Tap to wake up" once; browsers need a click before they will play sound.
+Click **Tap to wake up** and grant microphone permission before starting the demo.
+The simulated pat arrives after four seconds. `make touch` sends another simulated
+pat (allow ten seconds between pats). One connected browser records; keep the demo
+tab in front. Blank speech keys allow sensor testing and question buttons; actual
+voice transcription requires an ElevenLabs key. ASI replies have a scripted fallback.
 
-## Integrating with the bridge
+`PORT` controls the Docker backend port, and `BACKEND_URL` in `.env` must point to it.
+For example, with `PORT=18080`, set `BACKEND_URL=http://127.0.0.1:18080`.
+The frontend reads that URL when Vite starts. Restart Vite after changing it.
+The backend root `/` is not a webpage: use `/docs`, `/health`, or `/ready` there;
+the plant UI is on port **5173**.
 
-- **Agent (Task 4):** `POST /api/plant-state` with a `PlantState`. If it has a
-  `message`, the plant speaks it. For the scripted mood lines, use
-  `backend.conversation.scripted.MOOD_LINES`.
-- **Child questions:** the UI sends `ChildUtterance` over `/ws`. The bridge answers with
-  `backend.conversation.replies.reply()`, grounded in the latest `PlantState`.
-- **History (Task 6):** `Hub.history` in `backend/server.py` is in memory for now.
-  Replace it with rows from Neon.
+For native backend development, run `make native` (default port 8000; override with
+`PORT=18080 make native`). Set `DATABASE_URL=sqlite:///./plant.db` in `.env` for native
+persistence, or use a PostgreSQL URL. An empty URL uses bounded in-memory history.
+`python -m backend.server` is a compatibility entrypoint to the same backend,
+using `SERVER_PORT`. Run only one backend process for a given plant/database.
 
-## Fallbacks (no keys or no network)
+## Real hardware
 
-| Piece | Fallback |
-| --- | --- |
-| Speech-to-text | The talk button hides; on-screen question buttons send the question instead |
-| ASI:One | Scripted replies by intent and mood, filled with real readings |
-| Unsafe or ungrounded LLM output | Rejected by `conversation/safety.py`, then scripted reply |
-| ElevenLabs TTS | Cached clip if one exists, else the browser's speech synthesis |
-
-Before the demo, with a real key, cache every fixed line so they play offline:
+Follow **[Arduino wiring and setup](docs/arduino-setup.md)** for the UNO R4 WiFi,
+Grove touch v1.1, light v1.2, moisture v1.4, and Logitech webcam.
+The supplied sketch defines the USB serial protocol; no WiFi setup is needed.
+Moisture percentage remains unknown until you save real calibration measurements.
 
 ```sh
-python -m backend.speech.pregenerate
+make install-arduino
+make arduino-devices
+# Upload firmware/talking_plant/talking_plant.ino with Arduino IDE first.
+make arduino ARGS='--port /dev/cu.usbmodemYOUR_PORT'
 ```
+
+## Main files and interfaces
+
+| Location | Purpose |
+|---|---|
+| `firmware/talking_plant/` | Arduino sampling, touch debounce, USB JSON protocol |
+| `backend/sensors/` | Arduino reader, mock/replay modes, calibration, optional legacy FreeWILi adapter |
+| `backend/vision/` | Webcam capture and leaf color baseline |
+| `backend/api.py`, `backend/ui.py` | Unified REST/WebSocket backend and UI adapter |
+| `backend/agent/`, `backend/database/` | Mood decisions, touch gating, persistent history |
+| `backend/conversation/`, `backend/speech/` | Existing replies, STT, TTS and offline fallbacks |
+| `frontend/` | React plant, live gauges, microphone/touch handler |
+| `shared/` | Validated contracts, schemas, examples and plant profile |
+
+The UI uses `/ws`, `/api/health`, `/api/stt` and `/audio`. Native bridges post to
+`/api/v1/sensor-readings`, `/api/v1/touch-observations`, and `/api/v1/leaf-observations`.
+Detailed state/history remain at `/api/v1/plants/plant-1/...` and `/ws/plants/plant-1`.
+See [integration contracts](docs/person2-integration.md).
+The old `/api/plant-state` mock override requires `DEMO_MODE=true` and is not persisted;
+use `make arduino-mock` to exercise the complete pipeline.
 
 ## Checks
 
 ```sh
-python -m unittest discover -s backend/tests -t .   # offline tests for Tasks 3, 5, 7
-python -m backend.conversation.try_questions        # 10 sample questions (Task 5)
-cd frontend && npm run build                        # type-check and build the UI
+make test
+make lint
+make schemas
+.venv/bin/python -m unittest discover -s backend/tests -t .
+npm --prefix frontend run build
 ```
+
+See [verification and remaining work](docs/remaining-work.md) for what has actually
+been checked and what still needs physical hardware, microphone permission or keys.

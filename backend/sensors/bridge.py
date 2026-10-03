@@ -95,6 +95,11 @@ async def run(args):
         async with httpx.AsyncClient(
             base_url=backend_url, headers=headers, timeout=5, follow_redirects=False
         ) as client:
+            if args.mode in ("arduino", "arduino-mock"):
+                from backend.sensors.arduino import run as run_arduino
+
+                await run_arduino(client, args)
+                return
             if args.mode == "replay":
                 rows = replay_rows(args.fixture, args.plant_id)
                 previous = rows[0].timestamp
@@ -182,7 +187,11 @@ async def run(args):
 def main():
     load_dotenv()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=["mock", "replay", "freewili"], default="mock")
+    parser.add_argument(
+        "--mode", choices=["mock", "replay", "freewili", "arduino", "arduino-mock"], default="mock"
+    )
+    parser.add_argument("--port", default=os.getenv("ARDUINO_PORT", ""))
+    parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--scenario", choices=SCENARIOS, default="healthy")
     parser.add_argument("--plant-id", default=os.getenv("PLANT_ID", "plant-1"))
     parser.add_argument("--interval", type=float, default=1)

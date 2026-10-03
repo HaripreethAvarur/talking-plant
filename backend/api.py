@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from backend.config import Settings
 from backend.service import PlantService
-from shared.contracts import LeafObservation, SensorReading, StreamMessage
+from shared.contracts import LeafObservation, SensorReading, StreamMessage, TouchObservation
 
 
 def create_app(settings=None):
@@ -21,8 +21,12 @@ def create_app(settings=None):
     @asynccontextmanager
     async def lifespan(app):
         await service.start()
-        yield
-        await service.close()
+        await app.state.ui.start()
+        try:
+            yield
+        finally:
+            await app.state.ui.close()
+            await service.close()
 
     app = FastAPI(title="Talking Plant — Person 1", version="1.0.0", lifespan=lifespan)
     app.state.service = service
@@ -43,6 +47,10 @@ def create_app(settings=None):
 
     def viewer_auth(authorization: str | None = Header(default=None)):
         authenticate(authorization, settings.viewer_token.get_secret_value())
+
+    from backend.ui import install_ui
+
+    install_ui(app, service, settings, viewer_auth, ingestion_auth, authenticate)
 
     def plant(plant_id):
         if plant_id != service.engine.profile.plant_id:
@@ -106,6 +114,10 @@ def create_app(settings=None):
 
     @app.post("/api/v1/leaf-observations", dependencies=[Depends(ingestion_auth)])
     async def leaves(observation: LeafObservation):
+        return await ingest(observation)
+
+    @app.post("/api/v1/touch-observations", dependencies=[Depends(ingestion_auth)])
+    async def touch(observation: TouchObservation):
         return await ingest(observation)
 
     @app.websocket("/ws/plants/{plant_id}")

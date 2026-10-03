@@ -1,0 +1,2 @@
+# Native laptop only; excluded from the default backend image.
+pyserial==3.5

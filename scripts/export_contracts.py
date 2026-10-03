@@ -10,6 +10,7 @@ from shared.contracts import (
     ChildUtterance,
     ConversationContext,
     LeafObservation,
+    ListenRequest,
     Mood,
     PlantEvent,
     PlantProfile,
@@ -17,6 +18,7 @@ from shared.contracts import (
     Source,
     Status,
     StreamMessage,
+    TouchObservation,
 )
 
 
@@ -75,6 +77,17 @@ def main():
         context,
         StreamMessage(type="snapshot", state=state),
         profile,
+        TouchObservation(
+            event_id=UUID(int=6),
+            plant_id="plant-1",
+            timestamp=at,
+            source=Source.mock,
+            pressed=True,
+            status=Status.ok,
+            device_id="arduino-plant-1",
+            session_id=UUID(int=7),
+        ),
+        ListenRequest(event_id=UUID(int=8), plant_id="plant-1", timestamp=at),
     ]
     for obj in samples:
         name = type(obj).__name__

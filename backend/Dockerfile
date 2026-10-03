@@ -4,7 +4,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir --require-hashes -r requirements.txt \
     && useradd --create-home --uid 10001 plant
-COPY backend ./backend
+COPY --chown=plant:plant backend ./backend
 COPY shared ./shared
 COPY scripts ./scripts
 USER plant

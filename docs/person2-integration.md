@@ -1,14 +1,42 @@
 # Person 2 integration (schema 1.0)
 
-Your ownership remains `frontend/`, `backend/conversation/`, and `backend/speech/`.
-Person 1 supplies state, observations, history and suggested scripts. No microphone, STT,
-LLM conversation, TTS or character animation implementation is included.
+The merged frontend and existing conversation/speech modules now share the canonical
+backend. `backend/ui.py` translates state and care events for the existing `/ws` UI;
+`backend/server.py` is a compatibility entrypoint. The user authorized the frontend
+touch handler; conversation/speech source ownership remains with Person 2.
+
+## Existing React frontend
+
+Run Vite on localhost:5173. It proxies `/api`, `/ws`, and `/audio` to `BACKEND_URL`
+from the root `.env` (restart Vite after changes). `/ws` sends `plant_state`,
+`speech_audio`, and `listen_request` messages. `/api/health` reports speech support;
+`/api/stt` accepts a capped audio clip and returns the existing UI utterance shape.
+The frontend forwards that transcript on `/ws` for a reply grounded in live state
+and recent stored care events. Blank keys preserve on-screen question fallbacks.
+
+After the wake button grants mic permission, `listen_request` opens a six-second
+recording window. Its fields are `schema_version`, `type`, `event_id`, `plant_id`,
+`timestamp`, and `duration_ms`. The frontend drops duplicate/old events and cancels
+recording on hidden pages or disconnection. Only the first connected UI gets touch
+requests. A held pad and a reconnect do not automatically reopen the mic.
+
+`POST /api/v1/touch-observations` uses ingestion auth. Touch observations carry
+`pressed` (boolean when ok; null when unavailable), `status`, and the usual
+observation identity including optional `session_id`. They and derived `touch`
+events are persisted in care history. These events have no suggested speech.
+Full `/ws/plants/plant-1` messages also include optional `state.touch`.
+
+For a token-protected demo, the UI reads `plantViewerToken` from sessionStorage;
+set it at runtime using browser developer tools, then reload. Do not put the ingestion
+token in the browser. No login screen is included. Local mode needs no tokens.
+`/api/plant-state` remains a demo-only, unpersisted compatibility override.
+The detailed API described below remains available alongside these UI routes.
 
 ## Connections
 
 Local HTTP: `http://127.0.0.1:8000`; WebSocket: `ws://127.0.0.1:8000/ws/plants/plant-1`.
 Remote: use the deployed HTTPS origin and WSS equivalent. Configure your frontend API
-origin independently of `BACKEND_URL`, which configures the native bridge.
+origin in production; the local Vite proxy and native bridge both read `BACKEND_URL`.
 Set backend `CORS_ORIGINS` to a JSON array of exact frontend origins, including port.
 
 Local mode allows empty tokens. Remote mode requires **two distinct secrets**:
@@ -91,7 +119,7 @@ and `observation_id` links a derived event to the originating reading. Timer eve
 Reconnect gets current state, not an automatic backlog. Fetch `/history` (newest first,
 limit 1–1000, offset pagination), filter `record_type` to `mood_changed`/`watering`, and
 deduplicate using the same IDs. Choose an age limit for speech so old events do not speak
-on first launch. History also includes `sensor`, `leaf`, and `sensor_health` records.
+on first launch. History also includes `sensor`, `leaf`, `touch_observation`, `touch`, and `sensor_health` records.
 When `storage=bounded_memory`, older history may be unavailable. Slow WebSocket clients
 are closed with code 1013 after their 64-message queue fills; reconnect and recover history.
 
@@ -112,7 +140,7 @@ JSON schemas are in `shared/schemas/`; exact sample JSON is in `shared/samples/`
 
 Every contract has `schema_version="1.0"`; unknown fields/versions are rejected. Timestamps
 must include a timezone. `source` distinguishes mock, replay, hardware, image_file and backend;
-sensor readings allow only the first three. Missing measurements are null with a status,
+sensor and touch observations allow only the first three. Missing measurements are null with a status,
 never invented zeroes. Zero is valid only with `status=ok` (e.g. actual zero light).
 Moisture includes raw + relative_percent + calibration_id; uncalibrated raw can be kept with
 `status=uncalibrated`, relative_percent=null. Light is `{value,unit,status}`, with unit
@@ -123,7 +151,8 @@ Health: `ok`, `missing`, `disconnected`, `stale`, `error`, `uncalibrated`.
 The initial happy mood is a neutral display default, not proof of plant health. Display
 sensor health alongside mood. Stale/disconnected states null measurements; old latches may
 remain. Leaf proportions describe color pixels, not disease diagnoses, wilting, or calibrated
-probabilities. Raw audio and images are neither accepted nor stored by this backend.
+probabilities. Raw images are not accepted/stored. `/api/stt` forwards capped audio
+for transcription without storing it in our database.
 
 `GET /context` is the context input for your conversation pipeline; `ChildUtterance` is the
 agreed transcript shape, not an implementation of that pipeline. `/docs` provides OpenAPI.

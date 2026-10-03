@@ -1,75 +1,80 @@
 # Verification and remaining work
 
-Implemented on `person1-backend`. Teammate-owned frontend/conversation/speech files were
-left unchanged. No remote deployment or successful external agent registration is claimed.
+Current implementation is on `arduino-backend`. It adds UNO R4 firmware, USB ingestion,
+touch persistence, the unified UI adapter, and the explicitly authorized frontend
+microphone handler. Existing `backend/conversation/` and `backend/speech/` source was
+reused without edits. No physical upload or external deployment is claimed.
 
-## Actually run on 2026-10-02 (America/Detroit)
+## Checked on 2026-10-03
 
-- 33 automated tests passed on Python 3.13.7/macOS, including optional OpenCV tests.
-  One upstream Starlette/AnyIO deprecation warning remains; no failing tests.
-- Ruff passed. JSON schemas and sample/fixture generation ran successfully.
-- Core and development hashed dependency locks installed. Optional FreeWILi/uAgents locks
-  resolved; published SDK wheels were inspected to verify methods/signatures used.
-- Docker image built successfully on Linux ARM64 through Docker Desktop.
-- Isolated Compose backend + PostgreSQL 17.5 stack became healthy on localhost:18080.
-  Port 8000 was already occupied and its existing service was left untouched.
-- Live native HTTP/WebSocket smoke: snapshot received, all 24 readings accepted, request
-  retries deduplicated, exactly one thirsty suggestion and one thank-you suggestion.
-- Both test containers were removed/recreated with the named database volume preserved;
-  original speech event IDs were found in database history afterward.
-- With the actual test PostgreSQL stopped, `/health` stayed 200, `/ready` returned 503,
-  ingestion accepted a fresh observation, and live state updated.
-  After PostgreSQL restarted, that buffered observation appeared in persistent history.
-- Actual native replay CLI: all 24 timestamped fixture rows accepted, producing exactly
-  one `I'm thirsty.` and one `Thank you.` suggestion.
-- Tests covered noisy readings, isolated spikes, reconnect/gap/calibration reset, ordering,
-  stale/missing/future data, gratitude expiry/rearming, restart dedup, DB outage/queue bounds,
-  auth, disabled/enabled demo controls, slow subscribers, missing Fetch SDK, and secret redaction.
-  The uAgents worker contract was tested with an SDK double; this does not claim network delivery.
-- Synthetic yellow image file and invalid/dark/cropped-image tests passed. Missing-camera
-  behavior used a test double; an actual camera was not opened. Missing-image CLI returned
-  an error observation with null proportions and no crash.
-- Hardware diagnostics ran without SDK installed and reported candidate macOS ports plus
-  the actionable optional-dependency message. No board or sensor readings were obtained.
+- 47 backend pytest tests passed, including Arduino frame validation, raw/calibrated
+  values, sensor identity, delayed timestamps, clock wrap, duplicate suppression,
+  touch debounce/cooldown, held-pad/reconnect behavior and persistent restart dedup.
+- A real pyserial connection over a local pseudo-terminal exercised the START/session
+  handshake and partial JSON lines spanning serial read timeouts. No attached USB board
+  was opened for this test. Pyserial is optional for the server and installed by
+  `make install-arduino` for the laptop bridge.
+- UI WebSocket tests verified state conversion, missing-calibration/camera replies,
+  touch routing to a single client, no historical touch replay, viewer authentication,
+  origin validation, offline STT behavior and recovery after a TTS exception.
+- All 19 existing speech/conversation unittest tests passed offline.
+- Ruff lint and format checks passed; shared schemas/examples regenerated deterministically.
+- React TypeScript check and Vite production build passed.
+- Arduino sketch compiled for `arduino:renesas_uno:unor4wifi` with Arduino CLI 1.5.1
+  and Arduino renesas_uno core 1.6.0: 52,944 bytes flash and 6,868 bytes global RAM.
+- Docker image built and an isolated backend/PostgreSQL stack became healthy on
+  localhost:18081 (`talking-plant-arduino-check`, separate database volume).
+- Actual native Arduino mock CLI → HTTP → PostgreSQL → existing `/ws` UI protocol:
+  24 sensor readings, 24 touch observations, one listen request, and exactly one
+  thirsty/thank-you suggestion each. UI frames carried relative moisture and raw light.
+- Backend restart preserved the original sensor/touch event IDs in PostgreSQL.
 
-Local acceptance uses an isolated Compose project `talking-plant-person1-check`. Its test
-volume is separate from the normal `talking-plant` project's care history. The test stack
-was stopped after verification; its volume was preserved and port 18080 was released.
+One upstream Starlette/AnyIO deprecation warning remains. Browser automation reported
+no available browser, so microphone permission prompts, actual MediaRecorder behavior,
+playback and visible interaction still need the manual check below. Unit/integration
+checks do not substitute for that test. The temporary compiler was installed outside
+the repository; it did not flash the board.
 
-## Still requires tomorrow's hardware
+## Hardware and browser acceptance still needed
 
-Follow [hardware-bringup.md](hardware-bringup.md), including the H1–H6 TODO register:
+Follow [Arduino setup](arduino-setup.md):
 
-- Identify board generation/firmware and sensor model; confirm matching SDK family.
-- Verify supply/output voltage, physical pins, interface and common ground before connecting.
-- Complete the real moisture/light reader methods from verified docs and measurements;
-  currently they intentionally report missing rather than supplying fabricated data.
-- Measure/save dry and wet endpoints and bind calibration to the actual device identity.
-- Establish whether light is raw or lux and tune thresholds in matching units.
-- Physically test disconnect/reconnect and noisy dry→watered behavior.
-- Grant macOS camera permission, choose index/leaf region and check exposure.
+1. Verify the printed module pins and jumper power distribution; upload the sketch.
+2. Select the actual USB port and observe genuine touch/light/moisture readings.
+3. Measure/save real dry/wet endpoints; confirm the saved plant profile uses raw light
+   thresholds, then tune them under the demo lighting.
+4. Test held touch, repeated pats, cooldown and unplug/replug while held.
+5. Open localhost:5173, wake the plant, grant mic permission, select the Logitech mic,
+   and check the six-second listening window and child question/reply.
+6. Check permission denial, tab hiding, connection loss, multiple tabs and offline STT.
+7. Select the Logitech camera index and leaf ROI; validate exposure and color results.
+8. Verify stored history after a real reading and backend restart.
 
-The legacy SDK's device discovery/open/close/button methods are implemented and source-checked,
-but remain physically untested. New OneWili firmware requires the H1 adapter update. No
-serial JSON stream, baud rate, ADC pin or sensor return format is assumed.
+No actual sensor measurements, camera frames, microphone clips or live paid speech/LLM
+requests were used in these checks. The child can use question buttons without speech
+keys; live transcription needs ElevenLabs configuration.
 
-## Still requires credentials or an external target
+## Deployment and optional integrations
 
-- Neon: no connection URL/credentials supplied, so no live Neon test ran.
-- Fetch.ai: disabled by default. Real documented uAgents adapter and optional lock are
-  supplied; registration and target-agent delivery remain untested without a configured
-  seed/recipient. `/ready` reports runtime status accurately; local operation is independent.
-- Deployment: no hosting target configured. HTTPS/WSS, host probes, secret injection and
-  remote bridge round-trip need the deployment smoke test in [deployment.md](deployment.md).
-- GitHub CI: workflow is implemented but has not run remotely; this branch has not been pushed.
-- Person 2: implement UI, conversation, STT/TTS and animation, consuming the contracts in
-  [person2-integration.md](person2-integration.md). No code was added in their owned directories.
+- Local PostgreSQL persistence is tested; live Neon credentials were not used.
+- Fetch.ai remains optional and disabled by default. Agent registration/remote delivery
+  needs its configured seed and recipient; local sensors/UI do not depend on it.
+- FreeWILi remains an optional legacy adapter, with its unfinished physical-reader work
+  described in [hardware-bringup.md](hardware-bringup.md). The Arduino path now supplies
+  the implemented sensor protocol instead.
+- No hosting target, remote CI run, commit or push is claimed for this branch.
+- Runtime viewer-token support is present; there is no production login/session UI.
 
 ## Deliberate limits
 
-One configured plant, worker and replica; state/WS queues are in memory. The 1,000-batch
-database retry buffer is bounded and not crash-durable. API acceptance is not a durable
-commit. Restart while DB is unreachable cannot restore its checkpoint; it starts from
-the seed profile and fresh in-memory state. Readiness reports the outage. Remote read auth
-is a shared demo viewer token, not user accounts. Leaf color heuristics are not diagnoses
-or wilting detection; validated model work remains behind `LeafModel` / TODO(MODEL).
+One configured plant, backend worker and replica. The database retry queue is bounded
+and in memory; an accepted/buffered observation is not yet a durable commit. Readiness
+reports database failures. Use `/history` to recover records after reconnect; historical
+touch events are never replayed into microphone requests. The first connected UI is
+the listening client, so keep only the intended demo tab connected.
+
+The moisture percentage is a calibrated relative scale; raw light is not lux. A
+floating analog input cannot prove a sensor wire is connected. Webcam color proportions
+are a cropped-image heuristic, not disease diagnosis. Raw images and child microphone
+clips are not persisted by this backend; microphone clips are sent to the configured
+speech provider for transcription. Generated plant speech uses the existing local cache.

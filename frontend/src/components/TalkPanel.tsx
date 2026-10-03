@@ -21,8 +21,7 @@ const LABELS: Record<TalkStatus, string> = {
 export function TalkPanel({ status, error, sttAvailable, quickQuestions, onPressStart, onPressEnd, onQuestion }: Props) {
   return (
     <div className="talk-panel">
-      {sttAvailable && (
-        <button
+      <button
           className={`talk-button talk-${status}`}
           onPointerDown={(e) => {
             e.currentTarget.setPointerCapture(e.pointerId);
@@ -34,9 +33,8 @@ export function TalkPanel({ status, error, sttAvailable, quickQuestions, onPress
           disabled={status === "thinking"}
         >
           <span aria-hidden>🎤</span> {LABELS[status]}
-        </button>
-      )}
-      {sttAvailable && <p className="talk-hint">{error ?? "or hold the space bar"}</p>}
+      </button>
+      <p className="talk-hint">{error ?? (status === "listening" ? "I'm listening. Recording stops automatically." : sttAvailable ? "or pat the touch sensor to ask a question" : "Voice recognition is offline. You can still test the microphone or tap a question.")}</p>
       <div className="quick-questions">
         {quickQuestions.map((q) => (
           <button key={q} className="quick-question" onClick={() => onQuestion(q)}>
