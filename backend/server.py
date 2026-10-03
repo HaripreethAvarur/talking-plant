@@ -30,7 +30,9 @@ from backend import config
 from backend.conversation import replies
 from backend.conversation.scripted import QUICK_QUESTIONS
 from backend.speech import stt, tts
-from shared.contracts import ChildUtterance, Mood, PlantState
+from shared.contracts import Mood
+from shared.contracts import UIChildUtterance as ChildUtterance
+from shared.contracts import UIPlantState as PlantState
 
 log = logging.getLogger("talking_plant.server")
 
@@ -131,6 +133,9 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     log.info(
         "STT %s | TTS %s | LLM %s",
-        *("on" if ok else "fallback" for ok in (stt.is_available(), tts.is_available(), replies.is_available())),
+        *(
+            "on" if ok else "fallback"
+            for ok in (stt.is_available(), tts.is_available(), replies.is_available())
+        ),
     )
     uvicorn.run(app, host=config.SERVER_HOST, port=config.SERVER_PORT)

@@ -17,7 +17,8 @@ import httpx
 from backend import config
 from backend.conversation import safety
 from backend.conversation.scripted import REDIRECT_LINE, scripted_reply
-from shared.contracts import ChildUtterance, PlantState
+from shared.contracts import UIChildUtterance as ChildUtterance
+from shared.contracts import UIPlantState as PlantState
 
 log = logging.getLogger(__name__)
 

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import re
 
-from shared.contracts import Mood, PlantState
+from shared.contracts import Mood
+from shared.contracts import UIPlantState as PlantState
 
 # What the plant says on its own when its mood changes (used by the agent, Task 4).
 MOOD_LINES: dict[Mood, str] = {

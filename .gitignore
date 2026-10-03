@@ -9,3 +9,4 @@ backend/speech/cache/
 
 # Frontend build output
 frontend/dist/
+frontend/.vite/

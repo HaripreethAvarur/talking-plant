@@ -1,0 +1,170 @@
+{
+  "$defs": {
+    "Thresholds": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "dry_enter": {
+          "default": 30,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Dry Enter",
+          "type": "number"
+        },
+        "dry_exit": {
+          "default": 40,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Dry Exit",
+          "type": "number"
+        },
+        "dry_seconds": {
+          "default": 3,
+          "minimum": 0,
+          "title": "Dry Seconds",
+          "type": "number"
+        },
+        "dark_enter": {
+          "default": 100,
+          "minimum": 0,
+          "title": "Dark Enter",
+          "type": "number"
+        },
+        "dark_exit": {
+          "default": 150,
+          "minimum": 0,
+          "title": "Dark Exit",
+          "type": "number"
+        },
+        "light_unit": {
+          "default": "lux",
+          "enum": [
+            "lux",
+            "raw"
+          ],
+          "title": "Light Unit",
+          "type": "string"
+        },
+        "dark_seconds": {
+          "default": 3,
+          "minimum": 0,
+          "title": "Dark Seconds",
+          "type": "number"
+        },
+        "watering_rise": {
+          "default": 20,
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "title": "Watering Rise",
+          "type": "number"
+        },
+        "watering_window": {
+          "default": 30,
+          "exclusiveMinimum": 0,
+          "title": "Watering Window",
+          "type": "number"
+        },
+        "watering_sustain": {
+          "default": 2,
+          "minimum": 0,
+          "title": "Watering Sustain",
+          "type": "number"
+        },
+        "watering_cooldown": {
+          "default": 30,
+          "minimum": 0,
+          "title": "Watering Cooldown",
+          "type": "number"
+        },
+        "grateful_seconds": {
+          "default": 5,
+          "exclusiveMinimum": 0,
+          "title": "Grateful Seconds",
+          "type": "number"
+        },
+        "speech_cooldown": {
+          "default": 30,
+          "minimum": 0,
+          "title": "Speech Cooldown",
+          "type": "number"
+        },
+        "stale_seconds": {
+          "default": 5,
+          "exclusiveMinimum": 0,
+          "title": "Stale Seconds",
+          "type": "number"
+        },
+        "smoothing_samples": {
+          "default": 3,
+          "maximum": 60,
+          "minimum": 1,
+          "title": "Smoothing Samples",
+          "type": "integer"
+        },
+        "leaf_color_enter": {
+          "default": 0.35,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Leaf Color Enter",
+          "type": "number"
+        },
+        "leaf_color_exit": {
+          "default": 0.25,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Leaf Color Exit",
+          "type": "number"
+        },
+        "leaf_confirmations": {
+          "default": 2,
+          "minimum": 1,
+          "title": "Leaf Confirmations",
+          "type": "integer"
+        },
+        "leaf_stale_seconds": {
+          "default": 300,
+          "exclusiveMinimum": 0,
+          "title": "Leaf Stale Seconds",
+          "type": "number"
+        }
+      },
+      "title": "Thresholds",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "plant_id": {
+      "default": "plant-1",
+      "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+      "title": "Plant Id",
+      "type": "string"
+    },
+    "name": {
+      "default": "Sprout",
+      "title": "Name",
+      "type": "string"
+    },
+    "species": {
+      "default": "Unspecified demo plant",
+      "title": "Species",
+      "type": "string"
+    },
+    "thresholds": {
+      "$ref": "#/$defs/Thresholds"
+    }
+  },
+  "title": "PlantProfile",
+  "type": "object"
+}

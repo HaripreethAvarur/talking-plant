@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "event_id": "00000000-0000-0000-0000-000000000003",
+  "plant_id": "plant-1",
+  "timestamp": "2026-10-02T12:00:00Z",
+  "source": "image_file",
+  "device_id": "simulator",
+  "status": "ok",
+  "yellow_proportion": 0.1,
+  "brown_proportion": 0.02,
+  "method": "hsv-color-v1",
+  "region": [
+    0,
+    0,
+    100,
+    100
+  ],
+  "note": "Color observation only; not a diagnosis or probability."
+}

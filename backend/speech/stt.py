@@ -16,7 +16,7 @@ import logging
 import httpx
 
 from backend import config
-from shared.contracts import ChildUtterance
+from shared.contracts import UIChildUtterance as ChildUtterance
 
 log = logging.getLogger(__name__)
 

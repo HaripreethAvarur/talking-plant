@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import re
 
-from shared.contracts import Mood, PlantState
+from shared.contracts import Mood
+from shared.contracts import UIPlantState as PlantState
 
 MAX_SENTENCES = 2
 MAX_WORDS = 35
@@ -50,9 +51,7 @@ def _real_problems(state: PlantState) -> set[str]:
         state.moisture_pct is not None and state.moisture_pct < MOISTURE_LOW_PCT
     ):
         problems.add("thirsty")
-    if state.mood == Mood.TOO_DARK or (
-        state.light_pct is not None and state.light_pct < LIGHT_LOW_PCT
-    ):
+    if state.mood == Mood.TOO_DARK or (state.light_pct is not None and state.light_pct < LIGHT_LOW_PCT):
         problems.add("dark")
     if state.mood == Mood.UNWELL or state.leaf_issues:
         problems.add("leaves")

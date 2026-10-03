@@ -1,0 +1,104 @@
+{
+  "$defs": {
+    "Mood": {
+      "enum": [
+        "happy",
+        "thirsty",
+        "too_dark",
+        "unwell",
+        "grateful"
+      ],
+      "title": "Mood",
+      "type": "string"
+    },
+    "Source": {
+      "enum": [
+        "mock",
+        "replay",
+        "hardware",
+        "image_file",
+        "backend"
+      ],
+      "title": "Source",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "event_id": {
+      "format": "uuid",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "plant_id": {
+      "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+      "title": "Plant Id",
+      "type": "string"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/Source"
+    },
+    "kind": {
+      "enum": [
+        "mood_changed",
+        "watering",
+        "sensor_health"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "mood": {
+      "$ref": "#/$defs/Mood"
+    },
+    "reason": {
+      "title": "Reason",
+      "type": "string"
+    },
+    "suggested_text": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Suggested Text"
+    },
+    "observation_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observation Id"
+    }
+  },
+  "required": [
+    "plant_id",
+    "timestamp",
+    "source",
+    "kind",
+    "mood",
+    "reason"
+  ],
+  "title": "PlantEvent",
+  "type": "object"
+}

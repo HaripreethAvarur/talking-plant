@@ -1,0 +1,109 @@
+"""Regenerate checked-in JSON schemas, sample messages, profile and timestamped fixture."""
+
+import json
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from uuid import UUID
+
+from backend.sensors.simulator import scenario_reading
+from shared.contracts import (
+    ChildUtterance,
+    ConversationContext,
+    LeafObservation,
+    Mood,
+    PlantEvent,
+    PlantProfile,
+    PlantState,
+    Source,
+    Status,
+    StreamMessage,
+)
+
+
+def main():
+    root = Path("shared")
+    for directory in ("schemas", "samples", "fixtures"):
+        (root / directory).mkdir(exist_ok=True)
+    at = datetime(2026, 10, 2, 12, tzinfo=timezone.utc)
+    profile = PlantProfile()
+    sensor = scenario_reading("dry", 0, timestamp=at)
+    sensor.event_id = UUID(int=1)
+    state = PlantState(
+        plant_id="plant-1",
+        timestamp=at,
+        mood=Mood.thirsty,
+        sensor_health=Status.ok,
+        moisture=sensor.moisture,
+        light=sensor.light,
+        last_sensor_at=at,
+        reason="Persistent dry soil.",
+        smoothed_moisture_percent=15,
+    )
+    event = PlantEvent(
+        event_id=UUID(int=2),
+        plant_id="plant-1",
+        timestamp=at,
+        source=Source.mock,
+        kind="mood_changed",
+        mood=Mood.thirsty,
+        reason="Persistent dry soil.",
+        suggested_text="I'm thirsty.",
+        observation_id=sensor.event_id,
+    )
+    leaf = LeafObservation(
+        event_id=UUID(int=3),
+        plant_id="plant-1",
+        timestamp=at,
+        source=Source.image_file,
+        status=Status.ok,
+        yellow_proportion=0.1,
+        brown_proportion=0.02,
+        region=(0, 0, 100, 100),
+    )
+    utterance = ChildUtterance(
+        event_id=UUID(int=4), plant_id="plant-1", timestamp=at, source=Source.mock, text="Do you need water?"
+    )
+    context = ConversationContext(
+        plant_id="plant-1", timestamp=at, profile=profile, state=state, recent_events=[event]
+    )
+    samples = [
+        sensor,
+        leaf,
+        state,
+        event,
+        utterance,
+        context,
+        StreamMessage(type="snapshot", state=state),
+        profile,
+    ]
+    for obj in samples:
+        name = type(obj).__name__
+        (root / "schemas" / f"{name}.schema.json").write_text(
+            json.dumps(type(obj).model_json_schema(), indent=2) + "\n"
+        )
+        (root / "samples" / f"{name}.json").write_text(obj.model_dump_json(indent=2) + "\n")
+    watering = event.model_copy(
+        update={
+            "event_id": UUID(int=5),
+            "kind": "watering",
+            "mood": Mood.grateful,
+            "reason": "Sustained moisture rise indicates watering.",
+            "suggested_text": "Thank you.",
+        }
+    )
+    (root / "samples" / "WateringEvent.json").write_text(watering.model_dump_json(indent=2) + "\n")
+    update = StreamMessage(type="update", state=state, events=[event])
+    (root / "samples" / "StreamUpdate.json").write_text(update.model_dump_json(indent=2) + "\n")
+    if not (root / "plant-profile.json").exists():
+        (root / "plant-profile.json").write_text(profile.model_dump_json(indent=2) + "\n")
+    rows = []
+    for step in range(24):
+        reading = scenario_reading("dry-to-watered", step, timestamp=at + timedelta(seconds=step))
+        reading.source = Source.replay
+        reading.event_id = UUID(int=100 + step)
+        rows.append(reading.model_dump_json())
+    (root / "fixtures" / "dry-to-watered.jsonl").write_text("\n".join(rows) + "\n")
+
+
+if __name__ == "__main__":
+    main()

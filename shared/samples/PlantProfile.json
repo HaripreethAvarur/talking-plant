@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "plant_id": "plant-1",
+  "name": "Sprout",
+  "species": "Unspecified demo plant",
+  "thresholds": {
+    "schema_version": "1.0",
+    "dry_enter": 30.0,
+    "dry_exit": 40.0,
+    "dry_seconds": 3.0,
+    "dark_enter": 100.0,
+    "dark_exit": 150.0,
+    "light_unit": "lux",
+    "dark_seconds": 3.0,
+    "watering_rise": 20.0,
+    "watering_window": 30.0,
+    "watering_sustain": 2.0,
+    "watering_cooldown": 30.0,
+    "grateful_seconds": 5.0,
+    "speech_cooldown": 30.0,
+    "stale_seconds": 5.0,
+    "smoothing_samples": 3,
+    "leaf_color_enter": 0.35,
+    "leaf_color_exit": 0.25,
+    "leaf_confirmations": 2,
+    "leaf_stale_seconds": 300.0
+  }
+}

@@ -16,7 +16,8 @@ import httpx
 
 from backend import config
 from backend.conversation.scripted import MOOD_LINES
-from shared.contracts import Mood, PlantState
+from shared.contracts import Mood
+from shared.contracts import UIPlantState as PlantState
 
 URL = f"http://{config.SERVER_HOST}:{config.SERVER_PORT}/api/plant-state"
 
@@ -34,7 +35,9 @@ SEQUENCE: list[tuple[float, PlantState]] = [
 def run_once(client: httpx.Client) -> None:
     for wait, state in SEQUENCE:
         print(f"-> {state.mood.value:9} moisture {state.moisture_pct:>3}%  {state.message or ''}")
-        client.post(URL, content=state.model_dump_json(), headers={"content-type": "application/json"}).raise_for_status()
+        client.post(
+            URL, content=state.model_dump_json(), headers={"content-type": "application/json"}
+        ).raise_for_status()
         time.sleep(wait)
 
 

@@ -1,0 +1,357 @@
+{
+  "$defs": {
+    "LeafObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "event_id": {
+          "format": "uuid",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "plant_id": {
+          "default": "plant-1",
+          "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+          "title": "Plant Id",
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "mock",
+            "replay",
+            "hardware",
+            "image_file"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "device_id": {
+          "default": "simulator",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Device Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/Status"
+        },
+        "yellow_proportion": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Yellow Proportion"
+        },
+        "brown_proportion": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brown Proportion"
+        },
+        "method": {
+          "default": "hsv-color-v1",
+          "title": "Method",
+          "type": "string"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "maxItems": 4,
+              "minItems": 4,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Region"
+        },
+        "note": {
+          "default": "Color observation only; not a diagnosis or probability.",
+          "maxLength": 1000,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "status"
+      ],
+      "title": "LeafObservation",
+      "type": "object"
+    },
+    "Light": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "enum": [
+                "lux",
+                "raw"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "status": {
+          "$ref": "#/$defs/Status",
+          "default": "missing"
+        }
+      },
+      "title": "Light",
+      "type": "object"
+    },
+    "Moisture": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "raw": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw"
+        },
+        "relative_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative Percent"
+        },
+        "status": {
+          "$ref": "#/$defs/Status",
+          "default": "missing"
+        },
+        "calibration_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Calibration Id"
+        }
+      },
+      "title": "Moisture",
+      "type": "object"
+    },
+    "Mood": {
+      "enum": [
+        "happy",
+        "thirsty",
+        "too_dark",
+        "unwell",
+        "grateful"
+      ],
+      "title": "Mood",
+      "type": "string"
+    },
+    "Source": {
+      "enum": [
+        "mock",
+        "replay",
+        "hardware",
+        "image_file",
+        "backend"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "Status": {
+      "enum": [
+        "ok",
+        "missing",
+        "disconnected",
+        "stale",
+        "error",
+        "uncalibrated"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "plant_id": {
+      "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+      "title": "Plant Id",
+      "type": "string"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/Source",
+      "default": "backend"
+    },
+    "mood": {
+      "$ref": "#/$defs/Mood",
+      "default": "happy"
+    },
+    "reason": {
+      "default": "Waiting for observations; happy is a neutral display default.",
+      "title": "Reason",
+      "type": "string"
+    },
+    "sensor_health": {
+      "$ref": "#/$defs/Status",
+      "default": "missing"
+    },
+    "moisture": {
+      "$ref": "#/$defs/Moisture"
+    },
+    "light": {
+      "$ref": "#/$defs/Light"
+    },
+    "smoothed_moisture_percent": {
+      "anyOf": [
+        {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Smoothed Moisture Percent"
+    },
+    "last_sensor_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Sensor At"
+    },
+    "leaf": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LeafObservation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "last_event_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Event Id"
+    }
+  },
+  "required": [
+    "plant_id"
+  ],
+  "title": "PlantState",
+  "type": "object"
+}
