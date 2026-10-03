@@ -126,6 +126,9 @@ def test_api_touch_ui_storage_and_restart(settings):
                 assert response.status_code == 200
                 assert ws.receive_json()["type"] == "plant_state"
                 assert observer.receive_json()["type"] == "plant_state"
+            greeting = ws.receive_json()
+            assert greeting["type"] == "plant_state"
+            assert greeting.get("message") == "Hi there! What would you like to know?"
             request = ws.receive_json()
             assert request["type"] == "listen_request"
             assert request["duration_ms"] == 6000
@@ -166,7 +169,7 @@ def test_real_serial_handshake_and_partial_line_over_pseudoterminal():
     from backend.sensors.arduino_adapter import ArduinoSerialAdapter
 
     master, slave = os.openpty()
-    adapter = ArduinoSerialAdapter(os.ttyname(slave))
+    adapter = ArduinoSerialAdapter(os.ttyname(slave), protocol="session-v1")
     errors = []
 
     def board():
