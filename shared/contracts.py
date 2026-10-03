@@ -5,12 +5,11 @@ The simpler UI models at the bottom are used by the WebSocket server and
 conversation modules to communicate with the React frontend.
 """
 
+import time
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Annotated, Literal, Optional
 from uuid import UUID, uuid4
-
-import time
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -26,6 +25,7 @@ def now() -> float:
 # ===================================================================
 # Core backend contracts
 # ===================================================================
+
 
 class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
@@ -236,8 +236,10 @@ class StreamMessage(Contract):
 # UI-facing contracts (used by WebSocket server, conversation, speech)
 # ===================================================================
 
+
 class UIPlantState(BaseModel):
     """Simplified plant state sent over WebSocket to the React UI."""
+
     type: Literal["plant_state"] = "plant_state"
     mood: Mood
     message: Optional[str] = None
@@ -249,6 +251,7 @@ class UIPlantState(BaseModel):
 
 class UIChildUtterance(BaseModel):
     """Simplified utterance from the UI (speech-to-text or button)."""
+
     type: Literal["child_utterance"] = "child_utterance"
     text: str
     source: Literal["stt", "button", "typed"] = "stt"
@@ -257,6 +260,7 @@ class UIChildUtterance(BaseModel):
 
 class UISensorReading(BaseModel):
     """Simplified sensor reading for the UI."""
+
     type: Literal["sensor_reading"] = "sensor_reading"
     moisture_pct: float = Field(ge=0, le=100)
     light_pct: float = Field(ge=0, le=100)
@@ -267,6 +271,7 @@ class UISensorReading(BaseModel):
 
 class UILeafObservation(BaseModel):
     """Simplified leaf observation for the UI."""
+
     type: Literal["leaf_observation"] = "leaf_observation"
     issues: list[Literal["yellowing", "browning", "wilting"]] = []
     confidence: float = Field(default=0.0, ge=0, le=1)
@@ -279,6 +284,7 @@ class SpeechAudio(BaseModel):
     audio_url is None when TTS is unavailable and the line is not cached;
     the UI then falls back to the browser's built-in speech synthesis.
     """
+
     type: Literal["speech_audio"] = "speech_audio"
     text: str
     audio_url: Optional[str] = None

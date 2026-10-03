@@ -22,6 +22,7 @@ load_dotenv(REPO_ROOT / ".env")
 # Infrastructure settings (database, deployment, Fetch agent)
 # ---------------------------------------------------------------------------
 
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
     database_url: SecretStr = SecretStr("")

@@ -11,7 +11,9 @@ from __future__ import annotations
 import asyncio
 
 from backend.conversation.replies import reply
-from shared.contracts import UIChildUtterance as ChildUtterance, Mood, UIPlantState as PlantState
+from shared.contracts import Mood
+from shared.contracts import UIChildUtterance as ChildUtterance
+from shared.contracts import UIPlantState as PlantState
 
 QUESTIONS = [
     "Are you okay?",
