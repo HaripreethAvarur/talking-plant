@@ -1,0 +1,60 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "event_id": {
+      "format": "uuid",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "plant_id": {
+      "default": "plant-1",
+      "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+      "title": "Plant Id",
+      "type": "string"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "hardware",
+        "mock",
+        "replay"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "device_id": {
+      "default": "simulator",
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Device Id",
+      "type": "string"
+    },
+    "text": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Text",
+      "type": "string"
+    },
+    "language": {
+      "default": "en",
+      "title": "Language",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source",
+    "text"
+  ],
+  "title": "ChildUtterance",
+  "type": "object"
+}

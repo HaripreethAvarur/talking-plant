@@ -1,0 +1,42 @@
+name: talking-plant
+services:
+  postgres:
+    image: postgres:17.5-bookworm
+    environment:
+      POSTGRES_DB: talkingplant
+      POSTGRES_USER: plant
+      # Local-only default; this database has no host port.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-demo-only}
+    volumes:
+      - plant-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plant -d talkingplant"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://plant:${POSTGRES_PASSWORD:-local-demo-only}@postgres:5432/talkingplant
+      DATABASE_REQUIRED: "true"
+      DEPLOYMENT_MODE: local
+      DEMO_MODE: ${DEMO_MODE:-false}
+      INGESTION_TOKEN: ${INGESTION_TOKEN:-}
+      VIEWER_TOKEN: ${VIEWER_TOKEN:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000","http://localhost:5173"]}
+      PORT: "8000"
+    ports:
+      - "127.0.0.1:${PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 20
+      start_period: 15s
+volumes:
+  plant-data:

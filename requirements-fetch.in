@@ -1,0 +1,2 @@
+-r requirements.in
+uagents==0.26.0

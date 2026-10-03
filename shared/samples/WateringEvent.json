@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "event_id": "00000000-0000-0000-0000-000000000005",
+  "plant_id": "plant-1",
+  "timestamp": "2026-10-02T12:00:00Z",
+  "source": "mock",
+  "kind": "watering",
+  "mood": "grateful",
+  "reason": "Sustained moisture rise indicates watering.",
+  "suggested_text": "Thank you.",
+  "observation_id": "00000000-0000-0000-0000-000000000001"
+}
