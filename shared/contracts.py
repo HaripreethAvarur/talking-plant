@@ -1,9 +1,16 @@
-"""Version 1 wire contracts; export with python -m scripts.export_contracts."""
+"""Version 1 wire contracts; export with python -m scripts.export_contracts.
+
+The detailed models (Contract-based) are the canonical backend representations.
+The simpler UI models at the bottom are used by the WebSocket server and
+conversation modules to communicate with the React frontend.
+"""
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional
 from uuid import UUID, uuid4
+
+import time
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -11,6 +18,14 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validato
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
+
+def now() -> float:
+    return time.time()
+
+
+# ===================================================================
+# Core backend contracts
+# ===================================================================
 
 class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
@@ -40,6 +55,12 @@ class Status(str, Enum):
 
 
 class Mood(str, Enum):
+    HAPPY = "happy"
+    THIRSTY = "thirsty"
+    TOO_DARK = "too_dark"
+    UNWELL = "unwell"
+    GRATEFUL = "grateful"
+    # lowercase aliases for backend code
     happy = "happy"
     thirsty = "thirsty"
     too_dark = "too_dark"
@@ -209,3 +230,58 @@ class StreamMessage(Contract):
     type: Literal["snapshot", "update"]
     state: PlantState
     events: list[PlantEvent] = Field(default_factory=list)
+
+
+# ===================================================================
+# UI-facing contracts (used by WebSocket server, conversation, speech)
+# ===================================================================
+
+class UIPlantState(BaseModel):
+    """Simplified plant state sent over WebSocket to the React UI."""
+    type: Literal["plant_state"] = "plant_state"
+    mood: Mood
+    message: Optional[str] = None
+    moisture_pct: Optional[float] = None
+    light_pct: Optional[float] = None
+    leaf_issues: list[str] = []
+    ts: float = Field(default_factory=now)
+
+
+class UIChildUtterance(BaseModel):
+    """Simplified utterance from the UI (speech-to-text or button)."""
+    type: Literal["child_utterance"] = "child_utterance"
+    text: str
+    source: Literal["stt", "button", "typed"] = "stt"
+    ts: float = Field(default_factory=now)
+
+
+class UISensorReading(BaseModel):
+    """Simplified sensor reading for the UI."""
+    type: Literal["sensor_reading"] = "sensor_reading"
+    moisture_pct: float = Field(ge=0, le=100)
+    light_pct: float = Field(ge=0, le=100)
+    watered: bool = False
+    board_connected: bool = True
+    ts: float = Field(default_factory=now)
+
+
+class UILeafObservation(BaseModel):
+    """Simplified leaf observation for the UI."""
+    type: Literal["leaf_observation"] = "leaf_observation"
+    issues: list[Literal["yellowing", "browning", "wilting"]] = []
+    confidence: float = Field(default=0.0, ge=0, le=1)
+    ts: float = Field(default_factory=now)
+
+
+class SpeechAudio(BaseModel):
+    """Produced by the plant voice (TTS) and played by the UI.
+
+    audio_url is None when TTS is unavailable and the line is not cached;
+    the UI then falls back to the browser's built-in speech synthesis.
+    """
+    type: Literal["speech_audio"] = "speech_audio"
+    text: str
+    audio_url: Optional[str] = None
+    mime: str = "audio/mpeg"
+    cached: bool = False
+    ts: float = Field(default_factory=now)
