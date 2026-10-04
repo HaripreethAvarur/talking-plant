@@ -100,10 +100,12 @@ class FactPicker:
     def __init__(self, memory: int = 8):
         self.recent: deque[str] = deque(maxlen=memory)
 
-    def pick(self, moment_name: str, plant_type: str | None = None) -> str:
+    def pick(self, moment_name: str, plant_type: str | None = None, species: str | None = None) -> str:
         pool = FACTS.get(moment_name, []) + (
             TYPE_FACTS.get(plant_type or "", []) if moment_name in ("general", "sunny", "thirsty") else []
         )
+        if "aloe" not in (species or "").lower():
+            pool = [fact for fact in pool if "aloe" not in fact.lower()]  # don't call a cactus an aloe
         pool = pool or FACTS["general"]
         fresh = [fact for fact in pool if fact not in self.recent] or pool
         fact = fresh[0]

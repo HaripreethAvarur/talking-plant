@@ -17,7 +17,7 @@ def no_paid_apis(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def no_network_lookups(monkeypatch):
-    """The care log's air-quality and camera/Ollama calls are faked in tests."""
+    """Air quality, sunrise/sunset, weather and camera/Ollama calls are faked in tests."""
     from backend import air
     from backend.vision import health
 
@@ -25,7 +25,10 @@ def no_network_lookups(monkeypatch):
         return None
 
     monkeypatch.setattr(air, "us_aqi", nothing)
+    monkeypatch.setattr(air, "sun_times", nothing)
+    monkeypatch.setattr(air, "weather", nothing)
     monkeypatch.setattr(health, "look", nothing)
+    monkeypatch.setattr(health, "identify", nothing)
 
 
 @pytest.fixture

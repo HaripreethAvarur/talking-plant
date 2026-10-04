@@ -44,6 +44,19 @@
       "format": "date-time",
       "title": "Created At",
       "type": "string"
+    },
+    "species": {
+      "anyOf": [
+        {
+          "maxLength": 60,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Species"
     }
   },
   "required": [

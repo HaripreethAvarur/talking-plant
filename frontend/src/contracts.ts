@@ -78,6 +78,13 @@ export interface PlantRegistration {
   plant_name: string;
   plant_type: PlantType;
   location: string; // US ZIP code
+  species?: string | null; // e.g. "Aloe vera", guessed from the webcam at sign-up
+}
+
+export interface PlantGuess {
+  species: string;
+  plant_type: PlantType;
+  confidence: "high" | "medium" | "low";
 }
 
 export interface LeaderboardEntry {

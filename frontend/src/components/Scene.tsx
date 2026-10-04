@@ -31,10 +31,12 @@ export function Scene({
   face,
   night: isNight,
   weatherCode,
+  lightPct,
 }: {
   face: Face;
   night?: boolean | null;
   weatherCode?: number | null;
+  lightPct?: number | null;
 }) {
   const night = isNight ?? (face === "sleepy" || face === "too_dark");
   // Real weather outside: drizzle/rain/showers/storms (WMO 51-67, 80-82, 95-99), and cloud or fog.
@@ -42,9 +44,11 @@ export function Scene({
   const rainingOutside = (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || code >= 95;
   const cloudyOutside = code === 3 || code === 45 || code === 48;
   const rainy = face === "soggy" || rainingOutside;
-  const overcast = rainy || cloudyOutside || face === "offline" || face === "too_dark";
+  // A dark room in the daytime turns the sky gloomy right away, before the mood catches up.
+  const gloomy = !night && (face === "too_dark" || (lightPct != null && lightPct < 12));
+  const overcast = rainy || cloudyOutside || gloomy || face === "offline";
   return (
-    <div className={`scene scene-${face} ${night ? "scene-night" : ""}`} aria-hidden>
+    <div className={`scene scene-${face} ${night ? "scene-night" : gloomy ? "scene-gloomy" : ""}`} aria-hidden>
       {night ? (
         <>
           {STARS.map((s, i) => (

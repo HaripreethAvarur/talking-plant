@@ -37,6 +37,7 @@ def test_teach_shares_one_fact_then_waits():
         hub.facts, hub.last_fact = facts.FactPicker(), float("-inf")
         hub.service = mock.Mock()
         hub.service.engine.profile.plant_type.value = "succulent"
+        hub.service.engine.profile.species = "Aloe vera"
         hub.show, hub.say = mock.Mock(), mock.Mock()
         hub.teach(HAPPY, "watered")
         hub.teach(HAPPY, "watered")

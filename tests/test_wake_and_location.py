@@ -4,19 +4,6 @@ from fastapi.testclient import TestClient
 
 from backend import air
 from backend.api import create_app
-from backend.conversation.scripted import GREETING_LINE
-
-
-def test_wake_phrase_greets_then_listens_with_cooldown(settings):
-    with TestClient(create_app(settings)) as client:
-        assert client.post("/api/wake").json() == {"listening": False}  # nobody is watching
-        with client.websocket_connect("/ws") as ws:
-            ws.receive_json()
-            assert client.post("/api/wake").json() == {"listening": True}
-            assert ws.receive_json()["message"] == GREETING_LINE
-            request = ws.receive_json()
-            assert request["type"] == "listen_request" and request["duration_ms"] == 6000
-            assert client.post("/api/wake").json() == {"listening": False}  # cooldown
 
 
 def test_zip_lookup(settings, monkeypatch):

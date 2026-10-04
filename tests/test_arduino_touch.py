@@ -124,6 +124,8 @@ def test_api_touch_ui_storage_and_restart(settings):
             greeting = ws.receive_json()
             assert greeting["type"] == "plant_state"
             assert greeting.get("message") == GREETING_LINE
+            spoken = ws.receive_json()  # the greeting is spoken before the microphone opens
+            assert spoken["type"] == "speech_audio" and spoken["text"] == GREETING_LINE
             request = ws.receive_json()
             assert request["type"] == "listen_request"
             assert request["duration_ms"] == 6000

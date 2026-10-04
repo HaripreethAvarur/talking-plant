@@ -121,7 +121,7 @@ class Store:
 
     def upsert_plant(self, plant: PlantRegistration) -> None:
         """Register a plant, or update its name/type/location; created_at is kept."""
-        values = plant.model_dump(exclude={"schema_version"})
+        values = plant.model_dump(exclude={"schema_version", "species"})  # species lives in the profile
         values["plant_type"] = plant.plant_type.value
         with self.engine.begin() as conn:
             stmt = self._insert(plants).values(**values)

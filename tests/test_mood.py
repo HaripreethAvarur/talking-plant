@@ -138,6 +138,7 @@ def test_pulling_the_probe_out_and_back_in_is_not_watering(reading):
     events += [e for step in range(20, 32) for e in feed(engine, raw_reading(step, 640))]  # pushed back in
     assert not any(e.kind == "watering" for e in events)
     assert not any(e.suggested_text == MOOD_LINES[Mood.grateful] for e in events)
+    assert any(e.suggested_text == MOOD_LINES[Mood.thirsty] for e in events)  # out of the soil: thirsty
     # A real pour from dry soil is still thanked.
     events = [e for step in range(32, 44) for e in feed(engine, raw_reading(step, 420))]
     events += [e for step in range(44, 60) for e in feed(engine, raw_reading(step, 700))]

@@ -108,3 +108,70 @@ def test_rule_fallback_never_logs_grateful():
 
     assert labels._rule_for_day([]) is None
     assert Mood.grateful not in labels.LOG_MOODS
+
+
+def test_species_from_the_webcam_is_saved_and_editable(settings, monkeypatch):
+    from backend import ui
+
+    async def guess(jpeg):
+        return {"species": "Aloe vera", "plant_type": "succulent", "confidence": "high"}
+
+    monkeypatch.setattr(ui.plant_vision, "capture_jpeg", lambda index: b"jpeg")
+    monkeypatch.setattr(ui.plant_vision, "identify", guess)
+    with TestClient(create_app(settings)) as client:
+        assert client.post("/api/plant/identify").json() == {
+            "species": "Aloe vera",
+            "plant_type": "succulent",
+            "confidence": "high",
+        }
+        assert client.post("/api/plant", json=MAYA | {"species": "Aloe vera"}).status_code == 200
+        assert client.get("/api/health").json()["plant"]["species"] == "Aloe vera"
+    with TestClient(create_app(settings)) as client:  # survives a restart, and can be changed
+        assert client.get("/api/plant").json()["species"] == "Aloe vera"
+        assert (
+            client.post("/api/plant", json=MAYA | {"plant_type": "plant", "species": "Fern"}).status_code
+            == 200
+        )
+        assert client.get("/api/health").json()["plant"]["species"] == "Fern"
+        assert client.get("/api/health").json()["thresholds"]["dry"] == 30
+
+
+def test_identify_without_camera_or_plant(settings, monkeypatch):
+    from backend import ui
+
+    monkeypatch.setattr(ui.plant_vision, "capture_jpeg", lambda index: None)
+    with TestClient(create_app(settings)) as client:
+        assert client.post("/api/plant/identify").status_code == 503
+    monkeypatch.setattr(ui.plant_vision, "capture_jpeg", lambda index: b"jpeg")
+    with TestClient(create_app(settings)) as client:  # conftest's identify finds nothing
+        assert client.post("/api/plant/identify").status_code == 404
+
+
+async def test_identify_parses_the_vision_models_json(monkeypatch):
+    import importlib
+
+    import httpx
+
+    real = importlib.reload(health)  # undo conftest's stub for this one test
+    answers = iter(
+        [
+            '{"common_name": "aloe vera", "category": "succulent", "confidence": "high"}',
+            '{"common_name": null, "category": "plant", "confidence": "low"}',
+            '{"common_name": "Monstera", "category": "shrub", "confidence": "sure"}',
+        ]
+    )
+
+    def handler(request):
+        return httpx.Response(200, json={"response": next(answers)})
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(
+        real.httpx, "AsyncClient", lambda **kw: original(transport=httpx.MockTransport(handler), **kw)
+    )
+    assert await real.identify(b"x") == {
+        "species": "Aloe vera",
+        "plant_type": "succulent",
+        "confidence": "high",
+    }
+    assert await real.identify(b"x") is None
+    assert await real.identify(b"x") == {"species": "Monstera", "plant_type": "plant", "confidence": "low"}

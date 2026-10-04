@@ -3,8 +3,6 @@ import type { TalkStatus } from "../hooks/usePushToTalk";
 interface Props {
   status: TalkStatus;
   error: string | null;
-  plantName: string;
-  wakeWord: boolean;
   quickQuestions: string[];
   onMic: () => void;
   onQuestion: (q: string) => void;
@@ -19,12 +17,12 @@ const LABELS: Record<TalkStatus, string> = {
 const CHIP_COLORS = ["chip-q-pink", "chip-q-blue", "chip-q-yellow", "chip-q-purple"];
 
 /** Big tap-to-talk button, quick questions, and how else to start a chat. */
-export function TalkDock({ status, error, plantName, wakeWord, quickQuestions, onMic, onQuestion }: Props) {
+export function TalkDock({ status, error, quickQuestions, onMic, onQuestion }: Props) {
   const hint =
     error ??
     (status === "listening"
       ? "I'm all ears! Tap again when you're done."
-      : `Pat my leaf${wakeWord ? ` or say “Hi ${plantName}!”` : ""} to talk to me`);
+      : "Pat my leaf or tap the button to talk to me");
   return (
     <section className="dock">
       <button

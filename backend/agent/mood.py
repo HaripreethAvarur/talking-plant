@@ -198,9 +198,16 @@ class MoodEngine:
             )
         watered = False
         if reading.moisture.status == Status.ok and probe_out(reading.moisture):
-            # Out of the soil: pause, so pushing it back in can't look like a watering.
-            self._reset_continuity()
-            self.state.smoothed_moisture_percent = None
+            # Out of the soil reads as bone dry, so the plant gets thirsty; but forget the
+            # watering baseline, so pushing the probe back in can't look like a watering.
+            self.samples.clear()
+            self.window.clear()
+            self.rise_candidate = self.rise_baseline = self.rise_baseline_at = None
+            self.armed = False
+            self.state.smoothed_moisture_percent = 0.0
+            self.dry = self._debounce(
+                0.0, self.dry, self.t.dry_enter, self.t.dry_exit, "dry_candidate", self.t.dry_seconds, at
+            )
         elif reading.moisture.status == Status.ok:
             self.samples.append(reading.moisture.relative_percent)
             value = median(self.samples)

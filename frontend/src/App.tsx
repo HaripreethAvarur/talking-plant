@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
-import type { ChildUtterance, Face, Health, ListenRequest, SpeechAudio } from "./contracts";
+import type { ChildUtterance, Face, Health, ListenRequest, PlantRegistration, SpeechAudio } from "./contracts";
 import { ChatFeed, type ChatMessage } from "./components/ChatFeed";
 import { DemoPanel } from "./components/DemoPanel";
 import { LeaderboardPage } from "./components/LeaderboardPage";
@@ -12,7 +12,6 @@ import { TalkDock } from "./components/TalkDock";
 import { usePlantSocket } from "./hooks/usePlantSocket";
 import { usePlantVoice } from "./hooks/usePlantVoice";
 import { LISTEN_MS, usePushToTalk } from "./hooks/usePushToTalk";
-import { useWakeWord } from "./hooks/useWakeWord";
 
 const OFFLINE_HEALTH = ["missing", "disconnected", "stale"];
 const MAX_MESSAGES = 30;
@@ -45,6 +44,7 @@ export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [waiting, setWaiting] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
+  const [editing, setEditing] = useState<PlantRegistration | null>(null);
   const nextId = useRef(1);
 
   const say = useCallback((from: ChatMessage["from"], text: string) => {
@@ -54,10 +54,19 @@ export default function App() {
   const voice = usePlantVoice();
   const talkRef = useRef<ReturnType<typeof usePushToTalk> | null>(null);
   const onAudio = (audio: SpeechAudio) => { if (!talkRef.current?.isBusy()) void voice.play(audio); };
+  const speakingRef = useRef(false);
+  speakingRef.current = voice.speaking;
+  /** Resolves once the plant has finished talking (e.g. its greeting), so it isn't recorded. */
+  const afterSpeech = async () => {
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    for (let t = 0; t < 1200 && !speakingRef.current; t += 100) await wait(100); // greeting may still be loading
+    for (let t = 0; t < 10000 && speakingRef.current; t += 100) await wait(100);
+    await wait(250);
+  };
   const onListen = (request: ListenRequest) => {
     if (document.hidden || !voice.unlocked || talkRef.current?.isBusy()) return;
-    voice.stop();
-    void talkRef.current?.startFor(request.duration_ms);
+    // The backend sends the greeting first: record after it, so the child answers what they heard.
+    void afterSpeech().then(() => talkRef.current?.startFor(request.duration_ms));
   };
   const { state, connected, sendUtterance } = usePlantSocket(onAudio, onListen);
 
@@ -126,14 +135,7 @@ export default function App() {
   const name = info.plant.name;
   const offline = !state || OFFLINE_HEALTH.includes(state.sensor_health ?? "missing");
   const face: Face = offline ? "offline" : state.mood;
-  const registered = health?.registered !== false;
   const listening = talk.status === "listening";
-
-  const wake = useWakeWord(
-    name,
-    registered && voice.unlocked && connected && tab === "plant" && talk.status === "idle" && !voice.speaking,
-    () => { void api("/api/wake", { method: "POST" }); },
-  );
 
   const onMic = () => {
     if (listening) return talk.stop();
@@ -150,14 +152,27 @@ export default function App() {
     );
   }
 
+  if (editing) {
+    return (
+      <div className="app">
+        <Scene face="happy" />
+        <SignUp initial={editing} onCancel={() => setEditing(null)} onDone={() => { setEditing(null); void loadHealth(); }} />
+      </div>
+    );
+  }
+
   return (
     <div className={`app face-${face}`}>
-      <Scene face={tab === "leaderboard" ? "happy" : face} night={state?.is_night} weatherCode={state?.weather_code} />
+      <Scene face={tab === "leaderboard" ? "happy" : face} night={state?.is_night} weatherCode={state?.weather_code} lightPct={state?.light_pct} />
 
       <header className="topbar">
         <div className="brand">
           <span className="brand-badge" aria-hidden>🌱</span>
           <h1>{name}</h1>
+          <button className="edit-plant" title="Change my details" aria-label="Change my details"
+            onClick={() => void api<PlantRegistration>("/api/plant").then(setEditing).catch(() => undefined)}>
+            ✏️
+          </button>
         </div>
         <nav className="tabs" aria-label="Pages">
           <a href="#plant" className={tab === "plant" ? "tab tab-on" : "tab"} aria-current={tab === "plant" ? "page" : undefined}>
@@ -168,7 +183,6 @@ export default function App() {
           </a>
         </nav>
         <div className="status">
-          {wake.active && <span className="pill pill-ear" title="Wake word is on">👂 “Hi {name}!”</span>}
           <span className={`dot ${connected ? "dot-on" : "dot-off"}`} title={connected ? "Connected" : "Reconnecting…"} />
         </div>
       </header>
@@ -194,10 +208,10 @@ export default function App() {
             </section>
             <div className="side">
               <ChatFeed
-                messages={messages}
                 plantName={name}
-                thinking={waiting || talk.status === "thinking"}
-                hint={`Say hi to ${name}! Tap the microphone, pat my leaf, or pick a question below.`}
+                messages={messages}
+                    thinking={waiting || talk.status === "thinking"}
+                hint={`Say hi to ${name}! Pat my leaf, tap the microphone, or pick a question below.`}
               />
               <StatCards state={state} face={face} dry={info.thresholds?.dry ?? 30} soggy={info.thresholds?.soggy ?? 90} />
             </div>
@@ -205,8 +219,6 @@ export default function App() {
           <TalkDock
             status={talk.status}
             error={talk.error}
-            plantName={name}
-            wakeWord={wake.supported}
             quickQuestions={info.quick_questions}
             onMic={onMic}
             onQuestion={(q) => ask(q, "button")}

@@ -63,7 +63,7 @@ async def answer(text: str) -> str:
             profile.timezone,
             watered_ago,
             None,
-            _facts.pick(moment(view, just_watered), profile.plant_type.value),
+            _facts.pick(moment(view, just_watered), profile.plant_type.value, profile.species),
         ),
         context.hourly,
     )

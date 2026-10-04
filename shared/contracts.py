@@ -235,7 +235,7 @@ class PlantProfile(Contract):
         return self.model_copy(
             update=dict(
                 name=registration.plant_name,
-                species=registration.plant_type.value,
+                species=(registration.species or "").strip() or registration.plant_type.value,
                 plant_type=registration.plant_type,
                 username=registration.username,
                 thresholds=Thresholds.model_validate(thresholds.model_dump()),
@@ -301,6 +301,8 @@ class PlantRegistration(Contract):
     plant_type: PlantType
     location: str = Field(pattern=r"^\d{5}$", description="US ZIP code, used for local air quality")
     created_at: AwareDatetime = Field(default_factory=utcnow)
+    # What the plant is, e.g. "Aloe vera" (filled in from the webcam at sign-up); kept in the profile.
+    species: str | None = Field(default=None, max_length=60)
 
 
 class HourlyReading(Contract):

@@ -33,8 +33,7 @@ python -m backend.sensors.bridge --mode arduino-mock --count 24   # terminal 3 (
 
 The first launch asks for the kid's name, the plant's name, its type (succulent,
 houseplant or tree, which sets its dry and soggy levels) and a ZIP code for local air.
-A child can start a chat three ways: pat the touch sensor, say "Hi <plant name>!" (wake word,
-Chrome/Edge), or tap the big microphone button. Browsers keep sound and the microphone off
+A child can start a chat two ways: pat the touch sensor or tap the big microphone button. Browsers keep sound and the microphone off
 until the page is tapped once; `python -m scripts.kiosk` opens the UI full screen with that
 turned off, so nothing needs a tap. The simulated pat arrives after four seconds and the soil
 is "watered" after eight. `python -m scripts.touch` sends another pat

@@ -8,7 +8,6 @@ import asyncio
 import contextlib
 import logging
 from collections import OrderedDict, deque
-from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.staticfiles import StaticFiles
@@ -21,12 +20,14 @@ from backend.conversation.facts import EVENT_MOMENTS, FactPicker, moment
 from backend.conversation.scripted import GREETING_LINE, QUICK_QUESTIONS
 from backend.speech import stt, tts
 from backend.transport import QUEUE_SIZE, accept_viewer, offer, serve
+from backend.vision import health as plant_vision
 from shared.contracts import (
     ChildUtterance,
     ListenRequest,
     PlantEvent,
     PlantRegistration,
     PlantState,
+    PlantType,
     Status,
     UIPlantState,
     utcnow,
@@ -71,6 +72,7 @@ def to_ui(state, settings, message=None, leaf_stale_seconds=300):
 RISE_WINDOW_SECONDS = 180
 CONVERSATION_GAP_SECONDS = 180
 FACT_GAP_SECONDS = 90
+GREETING_SECONDS = 3  # about how long "Hi there! What would you like to know?" takes to say
 RISE_MIN_POINTS = 5
 
 
@@ -145,14 +147,25 @@ class UIHub:
         """Greet the child, then ask the first browser to record for the listening window."""
         self.last_listen = asyncio.get_running_loop().time()
         self.show(state, GREETING_LINE)
-        self.say(GREETING_LINE)
         seconds = self.settings.touch_listen_seconds
-        self.silent_until = asyncio.get_running_loop().time() + seconds + 1
+        # Hold other speech until the greeting, the recording and a moment to answer are over.
+        self.silent_until = asyncio.get_running_loop().time() + GREETING_SECONDS + seconds + 1
+        task = asyncio.create_task(self._greet_then_listen(event_id, plant_id, seconds))
+        self.tasks.append(task)
+        task.add_done_callback(lambda done: self.tasks.remove(done) if done in self.tasks else None)
+
+    async def _greet_then_listen(self, event_id, plant_id, seconds):
+        """The greeting's audio goes out first; the browser records once it has finished
+        playing, so the child answers the question it just heard."""
+        try:
+            audio = await tts.synthesize(GREETING_LINE)  # a cached clip, so this is quick
+            self.broadcast(audio.model_dump(mode="json"))
+        except Exception:
+            log.warning("Greeting speech unavailable; listening anyway")
+        if not self.clients:
+            return
         request = ListenRequest(
-            event_id=event_id,
-            plant_id=plant_id,
-            timestamp=timestamp,
-            duration_ms=int(seconds * 1000),
+            event_id=event_id, plant_id=plant_id, timestamp=utcnow(), duration_ms=int(seconds * 1000)
         )
         # One mic per physical plant: only the first connected browser records.
         queue = next(iter(self.clients.values()))
@@ -191,21 +204,15 @@ class UIHub:
                     if lesson and event.kind in ("watering", "mood_changed"):
                         self.teach(state, lesson)
 
-    def wake(self) -> bool:
-        """The child said "Hi <plant name>": same as a pat on the touch sensor."""
-        now = asyncio.get_running_loop().time()
-        if not self.clients or now - self.last_listen < self.settings.touch_cooldown_seconds:
-            return False
-        self._listen(uuid4(), self.service.engine.profile.plant_id, utcnow(), self.service.engine.state)
-        return True
-
     def teach(self, state, lesson):
         """Share a fact that fits a real moment, at most once per FACT_GAP_SECONDS."""
         now = asyncio.get_running_loop().time()
         if now - self.last_fact < FACT_GAP_SECONDS:
             return
         self.last_fact = now
-        fact = self.facts.pick(lesson, self.service.engine.profile.plant_type.value)
+        fact = self.facts.pick(
+            lesson, self.service.engine.profile.plant_type.value, self.service.engine.profile.species
+        )
         self.show(state, fact)
         self.say(fact)
 
@@ -233,7 +240,7 @@ class UIHub:
         watered_ago = (utcnow() - max(watered)).total_seconds() if watered else None
         view = self.view(self.service.engine.state)
         just_watered = watered_ago is not None and watered_ago <= replies.JUST_WATERED_SECONDS
-        fact = self.facts.pick(moment(view, just_watered), profile.plant_type.value)
+        fact = self.facts.pick(moment(view, just_watered), profile.plant_type.value, profile.species)
         plant = replies.Plant(
             profile.name,
             profile.species,
@@ -293,7 +300,20 @@ def install_ui(app, service, settings, viewer):
     async def get_plant():
         if service.registration is None:
             raise HTTPException(404, "No plant registered yet")
-        return service.registration
+        profile = service.engine.profile
+        species = profile.species if profile.species not in [t.value for t in PlantType] else None
+        return service.registration.model_copy(update={"species": service.registration.species or species})
+
+    @router.post("/api/plant/identify", dependencies=viewer)
+    async def identify_plant():
+        """Look at the plant through the webcam and guess what it is, for the sign-up form."""
+        jpeg = await asyncio.to_thread(plant_vision.capture_jpeg, settings.camera_index)
+        if not jpeg:
+            raise HTTPException(503, "The camera isn't available right now.")
+        guess = await plant_vision.identify(jpeg)
+        if guess is None:
+            raise HTTPException(404, "I couldn't spot a plant. Pick one below!")
+        return guess
 
     @router.post("/api/plant", dependencies=viewer)
     async def register(registration: PlantRegistration):
@@ -304,11 +324,6 @@ def install_ui(app, service, settings, viewer):
             raise HTTPException(503, "Couldn't save the plant right now; please try again.") from None
         hub.show(service.engine.state, f"Hi {registration.username}! I'm {registration.plant_name}.")
         return saved
-
-    @router.post("/api/wake", dependencies=viewer)
-    async def wake():
-        """Called by the UI when it hears its wake phrase."""
-        return {"listening": hub.wake()}
 
     @router.get("/api/location/zip", dependencies=viewer)
     async def zip_for_location(lat: float, lon: float):

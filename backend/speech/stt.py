@@ -10,6 +10,7 @@ buttons, which send a ChildUtterance with source="button".
 """
 
 import logging
+import re
 
 import httpx
 
@@ -66,10 +67,18 @@ async def transcribe(audio: bytes, mime: str = "audio/webm") -> ChildUtterance:
         log.warning("ElevenLabs STT failed: %s", exc)
         raise SttUnavailable(str(exc)) from exc
 
-    text = (resp.json().get("text") or "").strip()
+    text = spoken_words(resp.json().get("text") or "")
     if not text:
         raise SttUnavailable("no speech detected")
     return ChildUtterance(text=text, source="stt")
+
+
+def spoken_words(text: str) -> str:
+    """The transcript without sound notes like "(silence)" or "[background noise]", which
+    speech-to-text adds for clips with no real question in them."""
+    text = re.sub(r"\([^)]*\)|\[[^\]]*\]", " ", text)
+    text = " ".join(text.split())
+    return text if re.search(r"[A-Za-z]{2,}", text) else ""
 
 
 if __name__ == "__main__":

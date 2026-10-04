@@ -43,6 +43,9 @@ def capture_jpeg(camera_index: int) -> bytes | None:
             ok, image = camera.read()
         if not ok or image is None:
             return None
+        from backend.vision.observe import white_balance
+
+        image = white_balance(image)  # warm room light otherwise makes green leaves look yellow
         ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 85])
         return encoded.tobytes() if ok else None
     finally:
@@ -70,6 +73,52 @@ async def describe(jpeg: bytes) -> str | None:
         return None
     text = " ".join(response.json().get("response", "").split())
     return text[:MAX_CHARS] or None
+
+
+IDENTIFY_PROMPT = (
+    "Identify the potted plant in this photo. Reply with JSON only: "
+    '{"common_name": "...", "category": "succulent" | "plant" | "tree", "confidence": "high" | "medium" | "low"}. '
+    "category: succulent for cacti, aloe, jade and other fleshy desert plants; tree for bonsai and small trees; "
+    "plant for every other houseplant. If no plant is visible, use null for common_name."
+)
+
+
+async def identify(jpeg: bytes) -> dict | None:
+    """{"species": "Aloe vera", "plant_type": "succulent", "confidence": "high"} for the plant in
+    the photo, or None if Ollama is unavailable or no plant is visible. A guess for the
+    sign-up form to fill in; the child can change it."""
+    import json
+
+    settings = get_settings()
+    try:
+        async with httpx.AsyncClient(timeout=settings.ollama_timeout_s) as client:
+            response = await client.post(
+                f"{settings.ollama_url}/api/generate",
+                json={
+                    "model": settings.ollama_model,
+                    "prompt": IDENTIFY_PROMPT,
+                    "images": [base64.b64encode(jpeg).decode("ascii")],
+                    "stream": False,
+                    "format": "json",
+                    "options": {"temperature": 0.1, "num_predict": 60},
+                },
+            )
+            response.raise_for_status()
+        guess = json.loads(response.json().get("response", ""))
+    except (httpx.HTTPError, ValueError) as exc:
+        log.warning("Plant identification unavailable: %s", exc)
+        return None
+    name = guess.get("common_name") if isinstance(guess, dict) else None
+    if not isinstance(name, str) or not name.strip() or name.strip().lower() in ("null", "none", "unknown"):
+        return None
+    category = guess.get("category")
+    return {
+        "species": " ".join(name.split())[:60].capitalize(),
+        "plant_type": category if category in ("succulent", "plant", "tree") else "plant",
+        "confidence": guess.get("confidence")
+        if guess.get("confidence") in ("high", "medium", "low")
+        else "low",
+    }
 
 
 async def look(image: Path | None = None) -> str | None:

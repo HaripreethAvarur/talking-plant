@@ -169,6 +169,10 @@ def hourly_table(rows: list[HourlyReading]) -> str:
     return "\n".join(lines)
 
 
+def _article(word: str) -> str:
+    return "an" if word[:1].lower() in "aeiou" else "a"
+
+
 def build_messages(
     state: PlantState,
     question: str,
@@ -179,7 +183,7 @@ def build_messages(
 ) -> list[dict]:
     talking_to = f" You are talking with {plant.kid}." if plant.kid else ""
     system = (
-        f"You are {plant.name}, a {plant.species} who lives in a pot and loves chatting with "
+        f"You are {plant.name}, {_article(plant.species)} {plant.species} who lives in a pot and loves chatting with "
         f"kids aged 4 to 8.{talking_to}\n"
         "How you talk:\n"
         "- 1 or 2 short sentences, under 30 words, with words a 5-year-old knows.\n"

@@ -450,3 +450,11 @@ class WeatherSafetyTests(unittest.TestCase):
         self.assertIn(
             "invented problem", safety.check_reply("The air is humid, but my soil feels dry.", HAPPY)
         )
+
+
+class SpokenWordsTests(unittest.TestCase):
+    def test_sound_notes_are_not_questions(self):
+        self.assertEqual(stt.spoken_words("(silence)"), "")
+        self.assertEqual(stt.spoken_words("[background noise] (music)"), "")
+        self.assertEqual(stt.spoken_words("..."), "")
+        self.assertEqual(stt.spoken_words("(laughs) How are you?"), "How are you?")

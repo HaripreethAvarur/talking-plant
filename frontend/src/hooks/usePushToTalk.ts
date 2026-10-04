@@ -4,9 +4,13 @@ import type { ChildUtterance } from "../contracts";
 
 export type TalkStatus = "idle" | "listening" | "thinking" | "error";
 const MIN_CLIP_MS = 400;
+const SILENCE_MS = 1200; // after the child has spoken, this much quiet ends the recording
+const SPEECH_LEVEL = 0.04; // RMS loudness that counts as talking (0..1)
+const SPEECH_MS = 300; // this much loud audio counts as the child having started to talk
+const GRACE_MS = 700; // ignore the first moment of a recording (the greeting's echo, a click)
 export const LISTEN_MS = 8000; // a tap records this long unless tapped again
 
-/** Tap-to-talk recording, plus the bounded window opened by the touch sensor or wake word. */
+/** Tap-to-talk recording, plus the bounded window opened by the touch sensor. */
 export function usePushToTalk(onText: (text: string, source: ChildUtterance["source"]) => void) {
   const [status, setStatus] = useState<TalkStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -20,13 +24,17 @@ export function usePushToTalk(onText: (text: string, source: ChildUtterance["sou
   const onTextRef = useRef(onText);
   onTextRef.current = onText;
 
+  const stopListening = useRef<(() => void) | null>(null); // ends the silence detector
+
   const release = useCallback(() => {
+    stopListening.current?.();
+    stopListening.current = null;
     stream.current?.getTracks().forEach((track) => track.stop());
     stream.current = null;
     clearTimeout(timer.current);
   }, []);
 
-  // Called from the browser's wake button. Permission is explicit; no recording yet.
+  // Called on the first tap of the page. Permission is explicit; no recording yet.
   const prepare = useCallback(async () => {
     try {
       const permission = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -130,6 +138,7 @@ export function usePushToTalk(onText: (text: string, source: ChildUtterance["sou
       recorder.current = recording;
       recording.start();
       timer.current = setTimeout(stop, Math.min(15000, Math.max(1000, durationMs)));
+      stopListening.current = whenQuiet(acquired, stop);
       setStatus("listening");
       setError(null);
       return true;
@@ -144,14 +153,9 @@ export function usePushToTalk(onText: (text: string, source: ChildUtterance["sou
     }
   }, [cancel, release, stop]);
 
-  const startFor = useCallback(async (durationMs: number) => {
-    if (!armed.current) {
-      setError("Tap the talk button once to allow the microphone.");
-      setStatus("error");
-      return false;
-    }
-    return start(durationMs);
-  }, [start]);
+  // The touch sensor opens the mic. If permission was already granted (Chrome
+  // remembers it), this just works; start() shows an error only if the browser refuses.
+  const startFor = useCallback((durationMs: number) => start(durationMs), [start]);
 
   useEffect(() => {
     const typing = (event: KeyboardEvent) => {
@@ -176,4 +180,57 @@ export function usePushToTalk(onText: (text: string, source: ChildUtterance["sou
   }, [start, stop, cancel]);
 
   return { status, error, prepare, start, startFor, stop, cancel, isBusy: () => busy.current };
+}
+
+/**
+ * Calls onQuiet once the child has really spoken (SPEECH_MS of loud audio, after a short
+ * grace period that skips the greeting's echo) and then gone quiet for SILENCE_MS. Never
+ * throws: if audio analysis isn't available, recording just runs to its normal limit.
+ */
+function whenQuiet(stream: MediaStream, onQuiet: () => void): () => void {
+  try {
+    const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Context) return () => {};
+    const context = new Context();
+    void context.resume().catch(() => undefined);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 1024;
+    context.createMediaStreamSource(stream).connect(analyser);
+    const samples = new Float32Array(analyser.fftSize);
+    const startedAt = performance.now();
+    let loudFor = 0;
+    let spoke = false;
+    let quietSince = 0;
+    let last = startedAt;
+    const timer = setInterval(() => {
+      const now = performance.now();
+      const step = now - last;
+      last = now;
+      if (now - startedAt < GRACE_MS) return;
+      analyser.getFloatTimeDomainData(samples);
+      let sum = 0;
+      for (const value of samples) sum += value * value;
+      const loud = Math.sqrt(sum / samples.length) > SPEECH_LEVEL;
+      if (loud) {
+        loudFor += step;
+        if (loudFor >= SPEECH_MS) spoke = true;
+        quietSince = 0;
+      } else {
+        loudFor = 0;
+        if (spoke) {
+          quietSince ||= now;
+          if (now - quietSince >= SILENCE_MS) {
+            clearInterval(timer);
+            onQuiet();
+          }
+        }
+      }
+    }, 50);
+    return () => {
+      clearInterval(timer);
+      void context.close().catch(() => undefined);
+    };
+  } catch {
+    return () => {};
+  }
 }
