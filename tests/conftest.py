@@ -1,10 +1,18 @@
 from datetime import timedelta
 
 import pytest
+from pydantic import SecretStr
 
-from backend.config import Settings
+from backend.config import Settings, get_settings
 from backend.sensors.simulator import scenario_reading
 from shared.contracts import utcnow
+
+
+@pytest.fixture(autouse=True)
+def no_paid_apis(monkeypatch):
+    """Tests never spend ElevenLabs/ASI:One credit, even with real keys in .env."""
+    for key in ("elevenlabs_api_key", "asi_api_key"):
+        monkeypatch.setattr(get_settings(), key, SecretStr(""))
 
 
 @pytest.fixture

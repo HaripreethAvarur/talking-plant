@@ -15,7 +15,7 @@ import httpx
 from backend.config import get_settings
 from backend.conversation import safety
 from backend.conversation.scripted import REDIRECT_LINE, classify, missing_reading_reply, scripted_reply
-from shared.contracts import ChildUtterance
+from shared.contracts import ChildUtterance, HourlyReading
 from shared.contracts import UIPlantState as PlantState
 
 log = logging.getLogger(__name__)
@@ -57,7 +57,27 @@ def _facts(state: PlantState) -> str:
     return "\n".join(lines)
 
 
-def build_messages(state: PlantState, question: str, history: list[str], plant: Plant) -> list[dict]:
+def _value(number: float | None) -> str:
+    return "-" if number is None else str(round(number))
+
+
+def hourly_table(rows: list[HourlyReading]) -> str:
+    """The care log as a compact table, oldest first (about 25 tokens a row with health text)."""
+    lines = ["hour (UTC) | sun % | water % | air AQI | mood | how I looked"]
+    for row in rows:
+        mood = row.mood.value if row.mood else "-"
+        cells = (_value(row.sun_pct), _value(row.water_pct), _value(row.air_aqi), mood, row.health or "-")
+        lines.append(f"{row.hour:%a %H:00} | " + " | ".join(cells))
+    return "\n".join(lines)
+
+
+def build_messages(
+    state: PlantState,
+    question: str,
+    history: list[str],
+    plant: Plant,
+    hourly: list[HourlyReading] = (),
+) -> list[dict]:
     system = (
         f"You are {plant.name}, a friendly {plant.species} plant talking to a "
         "young child (age 4 to 8) at a science fair.\n"
@@ -72,6 +92,11 @@ def build_messages(state: PlantState, question: str, history: list[str], plant: 
     )
     if history:
         system += "\n\nRecent care history:\n" + "\n".join(f"- {h}" for h in history[-5:])
+    if hourly:
+        system += (
+            "\n\nMy last hours (use them to compare, e.g. 'drier than this morning'; "
+            "only quote numbers from 'Facts right now'):\n" + hourly_table(hourly)
+        )
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": question},

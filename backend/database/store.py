@@ -33,10 +33,16 @@ class Store:
             url = url.replace("postgresql://", "postgresql+psycopg://", 1)
         options = {"pool_pre_ping": True}
         if url.startswith("postgresql"):
-            options["connect_args"] = {"connect_timeout": 3, "options": "-c statement_timeout=3000"}
+            # Neon may need a few seconds to wake a suspended database.
+            options["connect_args"] = {"connect_timeout": 10}
         elif url.startswith("sqlite"):
             options["connect_args"] = {"check_same_thread": False}
         self.engine = create_engine(url, **options) if url else None
+        if self.engine is not None and self.engine.dialect.name == "postgresql":
+            # Neon's pooler rejects startup options, so cap query time per transaction instead.
+            event.listen(
+                self.engine, "begin", lambda conn: conn.exec_driver_sql("SET LOCAL statement_timeout = 3000")
+            )
         if self.engine is not None and self.engine.dialect.name == "sqlite":
             # SQLite ignores ON DELETE CASCADE unless asked per connection.
             event.listen(self.engine, "connect", lambda conn, _: conn.execute("PRAGMA foreign_keys=ON"))

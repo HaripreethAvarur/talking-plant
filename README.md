@@ -44,6 +44,18 @@ python -m backend.sensors.arduino                 # list USB ports
 python -m backend.sensors.bridge --mode arduino --port COM3
 ```
 
+## Plant Care Agent (Agentverse and ASI:One)
+
+```sh
+python -m pip install --require-hashes -r requirements-fetch.txt
+python -m backend.agent.chat_agent                # with the backend running
+```
+
+It answers chat messages as the plant, from its live readings. The first time, open
+the "Agent inspector" link it prints, choose **Connect → Mailbox** and sign in to
+Agentverse; after that, **Chat with Agent** on Agentverse opens it in ASI:One. Keep it
+running while chatting. Its address is fixed by `AGENT_SEED` in `.env`.
+
 ## Layout
 
 | Location | Purpose |
@@ -51,7 +63,7 @@ python -m backend.sensors.bridge --mode arduino --port COM3
 | `hardware/talking_plant_hub/` | Arduino sketch: samples sensors, sends one JSON line per second |
 | `backend/sensors/` | USB bridge, simulated and replay modes, moisture calibration |
 | `backend/vision/` | Webcam capture and the leaf colour baseline |
-| `backend/agent/` | Mood rules (`mood.py`), touch gating, optional Fetch.ai mirror |
+| `backend/agent/` | Mood rules (`mood.py`), touch gating, the ASI:One chat agent, optional Fetch mirror |
 | `backend/service.py` | Runs the mood engine, history, database writes and broadcasts |
 | `backend/api.py` | The one FastAPI app: sensor ingestion, state, history, demo controls |
 | `backend/ui.py` | The UI's routes: `/ws`, `/api/health`, `/api/stt`, `/audio` |
@@ -72,6 +84,7 @@ python -m pytest -q                               # make test
 python -m ruff check backend shared scripts tests # make lint
 python -m scripts.export_contracts                # make schemas (after changing contracts)
 python -m backend.conversation.try_questions      # sample replies
+python -m scripts.asi_latency                     # ASI:One speed with 24 hourly rows (uses the key)
 npm --prefix frontend run build
 ```
 

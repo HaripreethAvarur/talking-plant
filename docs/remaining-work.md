@@ -16,12 +16,20 @@ Follow [Arduino setup](arduino-setup.md):
 7. Choose the camera index and leaf region; check exposure and colour results.
 8. Confirm history survives a backend restart with real readings.
 
-## Needs credentials or an external target
+## Credentials and external services (checked 2026-10-03)
 
-- Neon: run against a real `DATABASE_URL` (local PostgreSQL and SQLite are tested).
-- ElevenLabs and ASI:One: run `python -m backend.conversation.try_questions` and
-  `python -m backend.speech.pregenerate` with real keys.
-- Fetch.ai: optional and off by default; registration and delivery need a seed and target.
+- Neon (Postgres 18, pooled endpoint): migrations run, upserts and constraints verified in a
+  rolled-back transaction. The pooler rejects startup options, so the query timeout is set
+  per transaction.
+- ElevenLabs (free plan, 10,000 characters a month): only default voices work through the
+  API, so the voice is Jessica. Speech took 1.4 s; transcribing it back gave the exact text.
+  Run `python -m backend.speech.pregenerate` (about 930 characters) once the wording is final.
+- ASI:One: `asi1-mini` answers in about 0.5 s median, 0.7 s slowest, with or without 24
+  hourly rows in the prompt (`python -m scripts.asi_latency`); `asi1` is slower and more
+  often breaks the length rule.
+- Plant Care Agent: starts, publishes the chat protocol and registers on the Almanac API.
+  Its mailbox must be connected once from the Agent inspector (needs an Agentverse login).
+- Fetch event mirror: optional and off by default; it needs a seed and a target agent.
 - Hosting: no remote deployment has been made; see [deployment.md](deployment.md).
 
 ## Deliberate limits

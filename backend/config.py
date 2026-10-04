@@ -22,6 +22,7 @@ SECRETS = (
     "ingestion_token",
     "viewer_token",
     "fetch_seed",
+    "agent_seed",
     "elevenlabs_api_key",
     "asi_api_key",
 )
@@ -59,7 +60,7 @@ class Settings(BaseSettings):
     elevenlabs_api_key: SecretStr = SecretStr("")
     elevenlabs_base_url: str = "https://api.elevenlabs.io"
     elevenlabs_stt_model: str = "scribe_v1"
-    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
+    elevenlabs_voice_id: str = "cgSgspJ2msm6clMCkdW9"  # Jessica: playful, bright, warm (free-plan voice)
     elevenlabs_tts_model: str = "eleven_flash_v2_5"
 
     # ASI:One LLM: conversation replies
@@ -67,6 +68,12 @@ class Settings(BaseSettings):
     asi_base_url: str = "https://api.asi1.ai/v1"
     asi_model: str = "asi1-mini"
     asi_timeout_s: float = Field(default=4, gt=0)
+
+    # Plant Care Agent on Agentverse, chat-able from ASI:One (python -m backend.agent.chat_agent)
+    agent_name: str = "talking-plant-sprout"
+    agent_seed: SecretStr = SecretStr("")
+    agent_port: int = 8010
+    backend_url: str = "http://127.0.0.1:8000"
 
     # Optional Fetch.ai uAgents mirror
     fetch_enabled: bool = False
