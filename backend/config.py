@@ -1,12 +1,10 @@
-"""Settings loaded from .env at the repo root.
+"""All settings, loaded once from the environment and .env at the repo root.
 
-Combines infrastructure settings (Settings class) with speech/LLM module
-constants used by the conversation and speech subsystems.
+Secrets left blank (or as a "your-..." placeholder) switch that module to its
+offline fallback instead of failing.
 """
 
-from __future__ import annotations
-
-import os
+from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -18,44 +16,73 @@ from shared.contracts import PlantProfile
 REPO_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(REPO_ROOT / ".env")
 
-# ---------------------------------------------------------------------------
-# Infrastructure settings (database, deployment, Fetch agent)
-# ---------------------------------------------------------------------------
+PLACEHOLDER_PREFIX = "your-"
+SECRETS = (
+    "database_url",
+    "ingestion_token",
+    "viewer_token",
+    "fetch_seed",
+    "elevenlabs_api_key",
+    "asi_api_key",
+)
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
-    database_url: SecretStr = SecretStr("")
-    database_required: bool = False
-    ingestion_token: SecretStr = SecretStr("")
-    viewer_token: SecretStr = SecretStr("")
+
+    # Backend server
+    host: str = "127.0.0.1"
+    port: int = 8000
     deployment_mode: str = "local"
     demo_mode: bool = False
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    ingestion_token: SecretStr = SecretStr("")
+    viewer_token: SecretStr = SecretStr("")
+
+    # Database (Neon in production, SQLite or empty for local work)
+    database_url: SecretStr = SecretStr("")
+    database_required: bool = False
     profile_path: Path = Path("shared/plant-profile.json")
     retry_buffer_size: int = Field(default=1000, ge=1)
     history_limit: int = Field(default=1000, ge=1)
     dedup_limit: int = Field(default=10000, ge=1)
     future_skew_seconds: float = Field(default=5, ge=0)
+
+    # Touch pad and UI display
     touch_cooldown_seconds: float = Field(default=10, ge=1)
     touch_listen_seconds: float = Field(default=6, ge=1, le=15)
     touch_debounce_seconds: float = Field(default=0.04, ge=0)
     ui_light_raw_max: float = Field(default=1023, gt=0)
     ui_light_lux_max: float = Field(default=1000, gt=0)
+
+    # ElevenLabs: speech-to-text and the plant's voice
+    elevenlabs_api_key: SecretStr = SecretStr("")
+    elevenlabs_base_url: str = "https://api.elevenlabs.io"
+    elevenlabs_stt_model: str = "scribe_v1"
+    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
+    elevenlabs_tts_model: str = "eleven_flash_v2_5"
+
+    # ASI:One LLM: conversation replies
+    asi_api_key: SecretStr = SecretStr("")
+    asi_base_url: str = "https://api.asi1.ai/v1"
+    asi_model: str = "asi1-mini"
+    asi_timeout_s: float = Field(default=4, gt=0)
+
+    # Optional Fetch.ai uAgents mirror
     fetch_enabled: bool = False
     fetch_seed: SecretStr = SecretStr("")
     fetch_target: str = ""
     fetch_port: int = 8001
     fetch_endpoint: str = "http://127.0.0.1:8001/submit"
 
-    @field_validator("database_url", mode="before")
+    @field_validator(*SECRETS, mode="before")
     @classmethod
-    def empty_placeholder(cls, value):
+    def blank_placeholders(cls, value):
         raw = value.get_secret_value() if isinstance(value, SecretStr) else value
-        return "" if isinstance(raw, str) and raw.startswith("your-") else value
+        return "" if isinstance(raw, str) and raw.strip().startswith(PLACEHOLDER_PREFIX) else value
 
     @model_validator(mode="after")
-    def remote_auth(self):
+    def consistent(self):
         if self.touch_cooldown_seconds < self.touch_listen_seconds:
             raise ValueError("TOUCH_COOLDOWN_SECONDS must cover TOUCH_LISTEN_SECONDS")
         if self.deployment_mode not in ("local", "remote"):
@@ -77,38 +104,7 @@ class Settings(BaseSettings):
         return PlantProfile()
 
 
-# ---------------------------------------------------------------------------
-# Speech / LLM module-level constants (used by conversation & speech modules)
-# ---------------------------------------------------------------------------
-
-PLACEHOLDER_PREFIX = "your-"
-
-
-def _get(name: str, default: str = "") -> str:
-    return os.getenv(name, default).strip()
-
-
-def is_configured(value: str) -> bool:
-    return bool(value) and not value.startswith(PLACEHOLDER_PREFIX)
-
-
-# ElevenLabs (STT and TTS)
-ELEVENLABS_API_KEY = _get("ELEVENLABS_API_KEY", "your-elevenlabs-api-key")
-ELEVENLABS_BASE_URL = _get("ELEVENLABS_BASE_URL", "https://api.elevenlabs.io")
-ELEVENLABS_STT_MODEL = _get("ELEVENLABS_STT_MODEL", "scribe_v1")
-ELEVENLABS_VOICE_ID = _get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
-ELEVENLABS_TTS_MODEL = _get("ELEVENLABS_TTS_MODEL", "eleven_flash_v2_5")
-
-# ASI:One LLM
-ASI_API_KEY = _get("ASI_API_KEY", "your-asi-one-api-key")
-ASI_BASE_URL = _get("ASI_BASE_URL", "https://api.asi1.ai/v1")
-ASI_MODEL = _get("ASI_MODEL", "asi1-mini")
-ASI_TIMEOUT_S = float(_get("ASI_TIMEOUT_S", "4"))
-
-# Plant identity used in prompts and scripted lines
-PLANT_NAME = _get("PLANT_NAME", "Sprout")
-PLANT_SPECIES = _get("PLANT_SPECIES", "pothos")
-
-# UI bridge server
-SERVER_HOST = _get("SERVER_HOST", "127.0.0.1")
-SERVER_PORT = int(_get("SERVER_PORT", "8000"))
+@lru_cache
+def get_settings() -> Settings:
+    """The process-wide settings; API keys for speech and the LLM are read from here."""
+    return Settings()

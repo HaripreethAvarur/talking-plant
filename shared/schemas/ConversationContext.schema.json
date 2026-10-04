@@ -240,11 +240,6 @@
         "thirsty",
         "too_dark",
         "unwell",
-        "grateful",
-        "happy",
-        "thirsty",
-        "too_dark",
-        "unwell",
         "grateful"
       ],
       "title": "Mood",
@@ -352,7 +347,7 @@
           "type": "string"
         },
         "species": {
-          "default": "Unspecified demo plant",
+          "default": "pothos",
           "title": "Species",
           "type": "string"
         },
@@ -747,7 +742,7 @@
       "type": "array"
     },
     "guidance": {
-      "default": "Use event_id to deduplicate speech. Observations are not diagnoses. Person 2 owns final wording.",
+      "default": "Use event_id to deduplicate speech. Observations are not diagnoses.",
       "title": "Guidance",
       "type": "string"
     }

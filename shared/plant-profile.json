@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "plant_id": "plant-1",
   "name": "Sprout",
-  "species": "Unspecified demo plant",
+  "species": "pothos",
   "thresholds": {
     "schema_version": "1.0",
     "dry_enter": 30.0,

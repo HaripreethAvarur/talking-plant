@@ -1,4 +1,4 @@
-// Mirror of shared/contracts.py. Keep the two in sync.
+// Mirror of the UI messages in shared/contracts.py (schemas in shared/schemas/). Keep in sync.
 
 export type Mood = "happy" | "thirsty" | "too_dark" | "unwell" | "grateful";
 
@@ -8,7 +8,7 @@ export interface PlantState {
   message: string | null;
   moisture_pct: number | null;
   light_pct: number | null;
-  leaf_issues: string[];
+  leaf_issues: string[] | null; // null: the camera has no recent look
   ts: number;
   sensor_health?: string;
   light_value?: number | null;

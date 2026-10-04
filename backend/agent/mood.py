@@ -4,6 +4,7 @@ from collections import deque
 from datetime import datetime, timedelta
 from statistics import median
 
+from backend.conversation.scripted import MOOD_LINES
 from shared.contracts import (
     LeafObservation,
     Light,
@@ -16,6 +17,9 @@ from shared.contracts import (
     Source,
     Status,
 )
+
+# Moods the plant announces on entry. Grateful is spoken by the watering event instead.
+SPOKEN_MOODS = (Mood.thirsty, Mood.too_dark, Mood.unwell)
 
 
 class MoodEngine:
@@ -91,11 +95,7 @@ class MoodEngine:
         if mood == self.state.mood:
             return []
         self.state.mood, self.state.reason = mood, reason
-        text = {
-            Mood.thirsty: "I'm thirsty.",
-            Mood.too_dark: "Could I have more light?",
-            Mood.unwell: "Please take a look at my leaves.",
-        }.get(mood)
+        text = MOOD_LINES[mood] if mood in SPOKEN_MOODS else None
         last = self.last_speech.get(mood.value)
         if text and last and (at - last).total_seconds() < self.t.speech_cooldown:
             text = None
@@ -213,7 +213,7 @@ class MoodEngine:
                     "Sustained relative moisture rise within the watering window.",
                     reading.source,
                     reading.event_id,
-                    "Thank you.",
+                    MOOD_LINES[Mood.grateful],
                 )
             )
         return "accepted", events

@@ -10,8 +10,10 @@ import httpx
 from dotenv import load_dotenv
 from websockets.asyncio.client import connect
 
+from backend.conversation.scripted import MOOD_LINES
 from backend.sensors.bridge import publish
 from backend.sensors.simulator import scenario_reading
+from shared.contracts import Mood
 
 
 async def run(args):
@@ -64,7 +66,10 @@ async def run(args):
                 except asyncio.CancelledError:
                     pass
         speech = [e for e in events if e["suggested_text"]]
-        assert [e["suggested_text"] for e in speech] == ["I'm thirsty.", "Thank you."], speech
+        assert [e["suggested_text"] for e in speech] == [
+            MOOD_LINES[Mood.thirsty],
+            MOOD_LINES[Mood.grateful],
+        ], speech
         assert len([e for e in events if e["kind"] == "watering"]) == 1
         if args.save_events:
             args.save_events.write_text(json.dumps([e["event_id"] for e in speech]))

@@ -1,21 +1,28 @@
+"""The one backend app: sensor ingestion, plant state/history, and (via backend/ui.py) the UI."""
+
 import asyncio
-import contextlib
-import secrets
 from contextlib import asynccontextmanager
 from typing import Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from backend.config import Settings
+from backend.config import get_settings
+from backend.sensors.simulator import SCENARIOS, scenario_reading
 from backend.service import PlantService
+from backend.transport import QUEUE_SIZE, accept_viewer, bearer, serve
+from backend.ui import install_ui
 from shared.contracts import LeafObservation, SensorReading, StreamMessage, TouchObservation
 
 
+class DemoRequest(BaseModel):
+    scenario: Literal[SCENARIOS]
+
+
 def create_app(settings=None):
-    settings = settings or Settings()
+    settings = settings or get_settings()
     service = PlantService(settings)
 
     @asynccontextmanager
@@ -28,7 +35,7 @@ def create_app(settings=None):
             await app.state.ui.close()
             await service.close()
 
-    app = FastAPI(title="Talking Plant — Person 1", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title="Talking Plant", version="1.0.0", lifespan=lifespan)
     app.state.service = service
     app.add_middleware(
         CORSMiddleware,
@@ -37,20 +44,9 @@ def create_app(settings=None):
         allow_methods=["GET", "POST"],
         allow_headers=["Authorization", "Content-Type"],
     )
-
-    def authenticate(header, expected):
-        if expected and not secrets.compare_digest(header or "", f"Bearer {expected}"):
-            raise HTTPException(401, "Invalid bearer token")
-
-    def ingestion_auth(authorization: str | None = Header(default=None)):
-        authenticate(authorization, settings.ingestion_token.get_secret_value())
-
-    def viewer_auth(authorization: str | None = Header(default=None)):
-        authenticate(authorization, settings.viewer_token.get_secret_value())
-
-    from backend.ui import install_ui
-
-    install_ui(app, service, settings, viewer_auth, ingestion_auth, authenticate)
+    viewer = [Depends(bearer(settings, "viewer_token"))]
+    ingestion = [Depends(bearer(settings, "ingestion_token"))]
+    install_ui(app, service, settings, viewer)
 
     def plant(plant_id):
         if plant_id != service.engine.profile.plant_id:
@@ -75,19 +71,19 @@ def create_app(settings=None):
             },
         )
 
-    @app.get("/api/v1/plants/{plant_id}/state", dependencies=[Depends(viewer_auth)])
+    @app.get("/api/v1/plants/{plant_id}/state", dependencies=viewer)
     async def state(plant_id: str):
         plant(plant_id)
         await service.tick()
         return service.engine.state
 
-    @app.get("/api/v1/plants/{plant_id}/context", dependencies=[Depends(viewer_auth)])
+    @app.get("/api/v1/plants/{plant_id}/context", dependencies=viewer)
     async def context(plant_id: str):
         plant(plant_id)
         await service.tick()
         return service.context()
 
-    @app.get("/api/v1/plants/{plant_id}/history", dependencies=[Depends(viewer_auth)])
+    @app.get("/api/v1/plants/{plant_id}/history", dependencies=viewer)
     async def history(plant_id: str, limit: int = Query(100, ge=1, le=1000), offset: int = Query(0, ge=0)):
         plant(plant_id)
         rows, storage = await service.get_history(limit, offset)
@@ -108,15 +104,15 @@ def create_app(settings=None):
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
 
-    @app.post("/api/v1/sensor-readings", dependencies=[Depends(ingestion_auth)])
+    @app.post("/api/v1/sensor-readings", dependencies=ingestion)
     async def sensors(reading: SensorReading):
         return await ingest(reading)
 
-    @app.post("/api/v1/leaf-observations", dependencies=[Depends(ingestion_auth)])
+    @app.post("/api/v1/leaf-observations", dependencies=ingestion)
     async def leaves(observation: LeafObservation):
         return await ingest(observation)
 
-    @app.post("/api/v1/touch-observations", dependencies=[Depends(ingestion_auth)])
+    @app.post("/api/v1/touch-observations", dependencies=ingestion)
     async def touch(observation: TouchObservation):
         return await ingest(observation)
 
@@ -125,64 +121,25 @@ def create_app(settings=None):
         if plant_id != service.engine.profile.plant_id:
             await ws.close(code=1008)
             return
-        origin = ws.headers.get("origin")
-        if origin and origin not in settings.cors_origins:
-            await ws.close(code=1008)
+        if not await accept_viewer(ws, settings):
             return
-        await ws.accept()
-        expected = settings.viewer_token.get_secret_value()
-        if expected:
-            try:
-                auth = await asyncio.wait_for(ws.receive_json(), timeout=5)
-                if (
-                    not isinstance(auth, dict)
-                    or auth.get("type") != "auth"
-                    or not isinstance(auth.get("token"), str)
-                ):
-                    raise ValueError("Invalid auth frame")
-                if not secrets.compare_digest(auth["token"], expected):
-                    raise ValueError("Invalid token")
-            except (ValueError, asyncio.TimeoutError, WebSocketDisconnect):
-                await ws.close(code=1008)
-                return
-        queue = asyncio.Queue(maxsize=64)
+        queue = asyncio.Queue(maxsize=QUEUE_SIZE)
         async with service.lock:
             service.subscribers.add(queue)
-            snapshot = StreamMessage(type="snapshot", state=service.engine.state).model_dump(mode="json")
-
-        async def sender():
-            await ws.send_json(snapshot)
-            while True:
-                message = await queue.get()
-                if message is None:
-                    await ws.close(code=1013, reason="Slow consumer; reconnect and recover history")
-                    return
-                await ws.send_json(message)
-
-        async def receiver():
-            while True:
-                await ws.receive_text()
-
-        tasks = [asyncio.create_task(sender()), asyncio.create_task(receiver())]
+            queue.put_nowait(
+                StreamMessage(type="snapshot", state=service.engine.state).model_dump(mode="json")
+            )
         try:
-            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            await serve(ws, queue)
         finally:
             service.subscribers.discard(queue)
-            for task in tasks:
-                task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, WebSocketDisconnect, RuntimeError):
-                    await task
 
-    class DemoRequest(BaseModel):
-        scenario: Literal["healthy", "dry", "watered", "dark", "noisy", "disconnected", "dry-to-watered"]
-
-    @app.post("/api/v1/demo/scenario", dependencies=[Depends(ingestion_auth)])
+    @app.post("/api/v1/demo/scenario", dependencies=ingestion)
     async def demo(request: DemoRequest):
         if not settings.demo_mode:
             raise HTTPException(404, "Demo controls disabled")
         if service.demo_task and not service.demo_task.done():
             raise HTTPException(409, "A scenario is already running")
-        from backend.sensors.simulator import scenario_reading
 
         async def run():
             for step in range(24):

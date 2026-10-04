@@ -1,26 +1,35 @@
-"""UI transport for the canonical service; reuses Person 2's conversation and speech modules."""
+"""The React UI's side of the backend: /ws, /api/health, /api/stt and /audio.
+
+UIHub turns mood-engine updates into UIPlantState messages, speaks events that
+carry suggested_text, opens the microphone on a touch, and answers questions.
+"""
 
 import asyncio
 import contextlib
 import logging
 from collections import OrderedDict
 
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
-from backend.conversation import replies, safety
-from backend.conversation.scripted import QUICK_QUESTIONS, REDIRECT_LINE, classify
+from backend.conversation import replies
+from backend.conversation.scripted import GREETING_LINE, QUICK_QUESTIONS
 from backend.speech import stt, tts
+from backend.transport import QUEUE_SIZE, accept_viewer, offer, serve
 from shared.contracts import (
+    ChildUtterance,
     ListenRequest,
     PlantEvent,
     PlantState,
     Status,
-    UIChildUtterance,
     UIPlantState,
     utcnow,
 )
+
+log = logging.getLogger(__name__)
+
+LEAF_COLOR_ISSUE = 0.25  # share of yellow or brown pixels that counts as an issue
 
 
 def to_ui(state, settings, message=None, leaf_stale_seconds=300):
@@ -29,17 +38,18 @@ def to_ui(state, settings, message=None, leaf_stale_seconds=300):
     if light.status == Status.ok:
         maximum = settings.ui_light_raw_max if light.unit == "raw" else settings.ui_light_lux_max
         light_pct = min(100, max(0, 100 * light.value / maximum))
-    issues = []
     leaf = state.leaf
+    issues = None  # the camera has no recent look
     if (
         leaf
         and leaf.status == Status.ok
         and (utcnow() - leaf.timestamp).total_seconds() <= leaf_stale_seconds
     ):
-        if leaf.yellow_proportion >= 0.25:
-            issues.append("yellowing")
-        if leaf.brown_proportion >= 0.25:
-            issues.append("browning")
+        issues = [
+            name
+            for name, share in (("yellowing", leaf.yellow_proportion), ("browning", leaf.brown_proportion))
+            if share >= LEAF_COLOR_ISSUE
+        ]
     return UIPlantState(
         mood=state.mood,
         message=message,
@@ -56,9 +66,9 @@ def to_ui(state, settings, message=None, leaf_stale_seconds=300):
 class UIHub:
     def __init__(self, service, settings):
         self.service, self.settings = service, settings
-        self.clients = OrderedDict()
+        self.clients = OrderedDict()  # websocket -> its outgoing queue
         self.speech = asyncio.Queue(maxsize=20)
-        self.queue = asyncio.Queue(maxsize=64)
+        self.queue = asyncio.Queue(maxsize=QUEUE_SIZE)
         self.tasks = []
         self.seen = OrderedDict()
         self.silent_until = 0
@@ -72,13 +82,11 @@ class UIHub:
 
     def broadcast(self, payload):
         for ws, queue in tuple(self.clients.items()):
-            if queue.full():
-                while not queue.empty():
-                    queue.get_nowait()
-                queue.put_nowait(None)
+            if not offer(queue, payload):
                 self.clients.pop(ws, None)
-            else:
-                queue.put_nowait(payload)
+
+    def show(self, state, message=None):
+        self.broadcast(self.view(state, message).model_dump(mode="json"))
 
     def say(self, text):
         if self.clients and not self.speech.full():
@@ -90,22 +98,39 @@ class UIHub:
             try:
                 audio = await tts.synthesize(text)
             except Exception:
-                logging.getLogger(__name__).warning("Speech synthesis unavailable", exc_info=False)
+                log.warning("Speech synthesis unavailable")
                 continue
             while asyncio.get_running_loop().time() < self.silent_until:
                 await asyncio.sleep(0.1)
             self.broadcast(audio.model_dump(mode="json"))
 
+    def _listen(self, event, state):
+        """Greet the child, then ask the first browser to record for the listening window."""
+        self.show(state, GREETING_LINE)
+        self.say(GREETING_LINE)
+        seconds = self.settings.touch_listen_seconds
+        self.silent_until = asyncio.get_running_loop().time() + seconds + 1
+        request = ListenRequest(
+            event_id=event.event_id,
+            plant_id=event.plant_id,
+            timestamp=event.timestamp,
+            duration_ms=int(seconds * 1000),
+        )
+        # One mic per physical plant: only the first connected browser records.
+        queue = next(iter(self.clients.values()))
+        if not queue.full():
+            queue.put_nowait(request.model_dump(mode="json"))
+
     async def _updates(self):
         while True:
             update = await self.queue.get()
             if update is None:
-                # Recover state but never replay old touch/speech requests.
+                # Dropped as a slow subscriber: resubscribe and resend current state, never old speech.
                 self.service.subscribers.add(self.queue)
-                self.broadcast(self.view(self.service.engine.state).model_dump(mode="json"))
+                self.show(self.service.engine.state)
                 continue
             state = PlantState.model_validate(update["state"])
-            self.broadcast(self.view(state).model_dump(mode="json"))
+            self.show(state)
             for data in update["events"]:
                 event = PlantEvent.model_validate(data)
                 key = str(event.event_id)
@@ -114,61 +139,25 @@ class UIHub:
                 self.seen[key] = True
                 if len(self.seen) > 10000:
                     self.seen.popitem(last=False)
-                if (
-                    event.kind == "touch"
-                    and self.clients
-                    and (utcnow() - event.timestamp).total_seconds() <= 5
-                ):
-                    # Greet the child before opening the mic.
-                    greeting = "Hi there! What would you like to know?"
-                    self.broadcast(self.view(state, greeting).model_dump(mode="json"))
-                    self.say(greeting)
-                    duration = int(self.settings.touch_listen_seconds * 1000)
-                    self.silent_until = (
-                        asyncio.get_running_loop().time() + self.settings.touch_listen_seconds + 1
-                    )
-                    request = ListenRequest(
-                        event_id=event.event_id,
-                        plant_id=event.plant_id,
-                        timestamp=event.timestamp,
-                        duration_ms=duration,
-                    )
-                    # One mic per physical plant: only the first connected browser records.
-                    queue = next(iter(self.clients.values()))
-                    if not queue.full():
-                        queue.put_nowait(request.model_dump(mode="json"))
+                fresh = (utcnow() - event.timestamp).total_seconds() <= 5
+                if event.kind == "touch" and self.clients and fresh:
+                    self._listen(event, state)
                 elif event.suggested_text:
-                    self.broadcast(self.view(state, event.suggested_text).model_dump(mode="json"))
+                    self.show(state, event.suggested_text)
                     self.say(event.suggested_text)
 
     async def answer(self, utterance):
         await self.service.tick()
-        state = self.service.engine.state
-        view = self.view(state)
-        intent = classify(utterance.text)
-        # Guard the existing reply module's healthy-leaf default without changing its code.
-        if safety.question_is_unsafe(utterance.text):
-            text = REDIRECT_LINE
-        elif intent == "leaves":
-            leaf = state.leaf
-            if (
-                not leaf
-                or leaf.status != Status.ok
-                or (utcnow() - leaf.timestamp).total_seconds() > self.service.engine.t.leaf_stale_seconds
-            ):
-                text = "I don't have a clear look at my leaves yet. Could you check the camera?"
-            elif view.leaf_issues:
-                text = "Some yellow or brown color is visible on my leaves. Could a grown-up take a look?"
-            else:
-                text = "The camera hasn't spotted much yellow or brown. A grown-up can help check my leaves."
-        elif intent in ("water", "wellbeing", "needs") and view.moisture_pct is None:
-            text = "I can't measure my soil moisture yet. Please check my sensor and calibration."
-        else:
-            history = [event.reason for event in self.service.context().recent_events]
-            reply = await replies.reply(view, utterance, history)
-            text = reply.text
-        self.broadcast(self.view(self.service.engine.state, text).model_dump(mode="json"))
-        self.say(text)
+        profile = self.service.engine.profile
+        history = [event.reason for event in self.service.context().recent_events]
+        reply = await replies.reply(
+            self.view(self.service.engine.state),
+            utterance,
+            history,
+            replies.Plant(profile.name, profile.species),
+        )
+        self.show(self.service.engine.state, reply.text)
+        self.say(reply.text)
 
     async def close(self):
         self.service.subscribers.discard(self.queue)
@@ -178,14 +167,14 @@ class UIHub:
                 await task
 
 
-def install_ui(app, service, settings, viewer_auth, ingestion_auth, authenticate):
+def install_ui(app, service, settings, viewer):
     hub = UIHub(service, settings)
     app.state.ui = hub
     router = APIRouter()
     tts.CACHE_DIR.mkdir(parents=True, exist_ok=True)
     app.mount(tts.AUDIO_ROUTE, StaticFiles(directory=tts.CACHE_DIR), name="audio")
 
-    @router.get("/api/health", dependencies=[Depends(viewer_auth)])
+    @router.get("/api/health", dependencies=viewer)
     async def health():
         profile = service.engine.profile
         return {
@@ -197,7 +186,7 @@ def install_ui(app, service, settings, viewer_auth, ingestion_auth, authenticate
             "touch_listen_seconds": settings.touch_listen_seconds,
         }
 
-    @router.post("/api/stt", dependencies=[Depends(viewer_auth)])
+    @router.post("/api/stt", dependencies=viewer)
     async def transcribe(request: Request):
         audio = bytearray()
         async for chunk in request.stream():
@@ -209,70 +198,26 @@ def install_ui(app, service, settings, viewer_auth, ingestion_auth, authenticate
         except stt.SttUnavailable:
             raise HTTPException(503, "Speech recognition unavailable; use the on-screen questions.") from None
 
-    @router.post("/api/plant-state", dependencies=[Depends(ingestion_auth)])
-    async def legacy_demo(state: UIPlantState):
-        if not settings.demo_mode:
-            raise HTTPException(404, "Direct UI-state override is demo-only; ingest sensor readings instead")
-        hub.broadcast(state.model_dump(mode="json"))
-        if state.message:
-            hub.say(state.message)
-        return {"ok": True, "persistence": "none", "demo_only": True}
-
     @router.websocket("/ws")
     async def websocket(ws: WebSocket):
-        origin = ws.headers.get("origin")
-        if origin and origin not in settings.cors_origins:
-            await ws.close(code=1008)
+        if not await accept_viewer(ws, settings):
             return
-        await ws.accept()
-        if settings.viewer_token.get_secret_value():
-            try:
-                frame = await asyncio.wait_for(ws.receive_json(), 5)
-                if (
-                    not isinstance(frame, dict)
-                    or frame.get("type") != "auth"
-                    or not isinstance(frame.get("token"), str)
-                ):
-                    raise ValueError("Invalid auth frame")
-                authenticate(f"Bearer {frame['token']}", settings.viewer_token.get_secret_value())
-            except (ValueError, HTTPException, asyncio.TimeoutError, WebSocketDisconnect):
-                await ws.close(code=1008)
-                return
-        queue = asyncio.Queue(maxsize=64)
+        queue = asyncio.Queue(maxsize=QUEUE_SIZE)
         hub.clients[ws] = queue
         queue.put_nowait(hub.view(service.engine.state).model_dump(mode="json"))
 
-        async def sender():
-            while True:
-                message = await queue.get()
-                if message is None:
-                    await ws.close(code=1013)
-                    return
-                await ws.send_json(message)
-
-        async def receiver():
-            while True:
-                raw = await ws.receive_text()
-                if len(raw) > 8000:
-                    await ws.close(code=1009)
-                    return
-                try:
-                    utterance = UIChildUtterance.model_validate_json(raw)
-                    if not utterance.text.strip() or len(utterance.text) > 4000:
-                        continue
-                except ValidationError:
-                    continue
+        async def on_text(raw):
+            try:
+                utterance = ChildUtterance.model_validate_json(raw)
+            except ValidationError:
+                return
+            if utterance.text.strip() and len(utterance.text) <= 4000:
                 await hub.answer(utterance)  # One in-flight answer per client.
 
-        tasks = [asyncio.create_task(sender()), asyncio.create_task(receiver())]
         try:
-            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            await serve(ws, queue, on_text)
         finally:
             hub.clients.pop(ws, None)
-            for task in tasks:
-                task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, WebSocketDisconnect, RuntimeError):
-                    await task
 
     app.include_router(router)
     return hub

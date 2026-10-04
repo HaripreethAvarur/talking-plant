@@ -3,7 +3,7 @@ import type { ChildUtterance, ListenRequest, PlantState, ServerMessage, SpeechAu
 
 const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
 
-/** Live connection to backend/server.py; reconnects on its own if the backend restarts. */
+/** Live connection to the backend /ws; reconnects on its own if the backend restarts. */
 export function usePlantSocket(onAudio: (audio: SpeechAudio) => void, onListen?: (request: ListenRequest) => void) {
   const [state, setState] = useState<PlantState | null>(null);
   const [connected, setConnected] = useState(false);

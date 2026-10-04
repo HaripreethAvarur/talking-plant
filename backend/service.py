@@ -6,6 +6,7 @@ from backend.agent.fetch_adapter import FetchAdapter
 from backend.agent.mood import MoodEngine
 from backend.agent.touch import TouchGate
 from backend.database.store import Store
+from backend.transport import offer
 from shared.contracts import (
     ConversationContext,
     PlantEvent,
@@ -82,14 +83,9 @@ class PlantService:
     def _broadcast(self, events):
         message = StreamMessage(type="update", state=self.engine.state, events=events).model_dump(mode="json")
         for queue in tuple(self.subscribers):
-            if queue.full():
-                # Disconnect slow clients explicitly; they recover missed events via history.
-                while not queue.empty():
-                    queue.get_nowait()
-                queue.put_nowait(None)
+            # Slow clients are disconnected; they recover missed events via history.
+            if not offer(queue, message):
                 self.subscribers.discard(queue)
-            else:
-                queue.put_nowait(message)
 
     def _commit(self, observation, events):
         if observation is None and not events:

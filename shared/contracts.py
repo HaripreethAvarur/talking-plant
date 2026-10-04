@@ -1,8 +1,8 @@
 """Version 1 wire contracts; export with python -m scripts.export_contracts.
 
-The detailed models (Contract-based) are the canonical backend representations.
-The simpler UI models at the bottom are used by the WebSocket server and
-conversation modules to communicate with the React frontend.
+The Contract-based models are what sensors, the mood engine and the database
+exchange. The models at the bottom are the WebSocket messages for the React UI;
+frontend/src/contracts.ts mirrors them.
 """
 
 import time
@@ -55,12 +55,6 @@ class Status(str, Enum):
 
 
 class Mood(str, Enum):
-    HAPPY = "happy"
-    THIRSTY = "thirsty"
-    TOO_DARK = "too_dark"
-    UNWELL = "unwell"
-    GRATEFUL = "grateful"
-    # lowercase aliases for backend code
     happy = "happy"
     thirsty = "thirsty"
     too_dark = "too_dark"
@@ -190,7 +184,7 @@ class Thresholds(Contract):
 class PlantProfile(Contract):
     plant_id: PlantID = "plant-1"
     name: str = "Sprout"
-    species: str = "Unspecified demo plant"
+    species: str = "pothos"
     thresholds: Thresholds = Field(default_factory=Thresholds)
 
 
@@ -222,12 +216,6 @@ class PlantEvent(Contract):
     observation_id: UUID | None = None
 
 
-class ChildUtterance(Observation):
-    source: Literal[Source.hardware, Source.mock, Source.replay]
-    text: str = Field(min_length=1, max_length=4000)
-    language: str = "en"
-
-
 class ConversationContext(Contract):
     plant_id: PlantID
     timestamp: AwareDatetime = Field(default_factory=utcnow)
@@ -235,9 +223,7 @@ class ConversationContext(Contract):
     profile: PlantProfile
     state: PlantState
     recent_events: list[PlantEvent]
-    guidance: str = (
-        "Use event_id to deduplicate speech. Observations are not diagnoses. Person 2 owns final wording."
-    )
+    guidance: str = "Use event_id to deduplicate speech. Observations are not diagnoses."
 
 
 class StreamMessage(Contract):
@@ -247,19 +233,20 @@ class StreamMessage(Contract):
 
 
 # ===================================================================
-# UI-facing contracts (used by WebSocket server, conversation, speech)
+# UI WebSocket messages (backend/ui.py <-> frontend/src/contracts.ts)
 # ===================================================================
 
 
 class UIPlantState(BaseModel):
-    """Simplified plant state sent over WebSocket to the React UI."""
+    """What the plant's face, gauges and speech bubble show; also the input to replies."""
 
     type: Literal["plant_state"] = "plant_state"
     mood: Mood
     message: Optional[str] = None
     moisture_pct: Optional[float] = None
     light_pct: Optional[float] = None
-    leaf_issues: list[str] = []
+    # None: the camera has no recent look at the leaves. []: it looked and saw nothing wrong.
+    leaf_issues: list[str] | None = None
     ts: float = Field(default_factory=now)
     sensor_health: Status = Status.missing
     light_unit: Literal["lux", "raw"] | None = None
@@ -274,32 +261,12 @@ class ListenRequest(Contract):
     duration_ms: int = Field(default=6000, ge=1000, le=15000)
 
 
-class UIChildUtterance(BaseModel):
-    """Simplified utterance from the UI (speech-to-text or button)."""
+class ChildUtterance(BaseModel):
+    """A child's question from the UI: transcribed speech or a tapped question button."""
 
     type: Literal["child_utterance"] = "child_utterance"
     text: str
     source: Literal["stt", "button", "typed"] = "stt"
-    ts: float = Field(default_factory=now)
-
-
-class UISensorReading(BaseModel):
-    """Simplified sensor reading for the UI."""
-
-    type: Literal["sensor_reading"] = "sensor_reading"
-    moisture_pct: float = Field(ge=0, le=100)
-    light_pct: float = Field(ge=0, le=100)
-    watered: bool = False
-    board_connected: bool = True
-    ts: float = Field(default_factory=now)
-
-
-class UILeafObservation(BaseModel):
-    """Simplified leaf observation for the UI."""
-
-    type: Literal["leaf_observation"] = "leaf_observation"
-    issues: list[Literal["yellowing", "browning", "wilting"]] = []
-    confidence: float = Field(default=0.0, ge=0, le=1)
     ts: float = Field(default_factory=now)
 
 

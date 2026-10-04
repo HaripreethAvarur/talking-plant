@@ -4,8 +4,6 @@ check_reply() returns a reason string when a reply must be thrown away, or None
 when it is fine. The caller then falls back to a scripted line.
 """
 
-from __future__ import annotations
-
 import re
 
 from shared.contracts import Mood
@@ -47,13 +45,13 @@ def question_is_unsafe(question: str) -> bool:
 
 def _real_problems(state: PlantState) -> set[str]:
     problems: set[str] = set()
-    if state.mood == Mood.THIRSTY or (
+    if state.mood == Mood.thirsty or (
         state.moisture_pct is not None and state.moisture_pct < MOISTURE_LOW_PCT
     ):
         problems.add("thirsty")
-    if state.mood == Mood.TOO_DARK or (state.light_pct is not None and state.light_pct < LIGHT_LOW_PCT):
+    if state.mood == Mood.too_dark or (state.light_pct is not None and state.light_pct < LIGHT_LOW_PCT):
         problems.add("dark")
-    if state.mood == Mood.UNWELL or state.leaf_issues:
+    if state.mood == Mood.unwell or state.leaf_issues:
         problems.add("leaves")
     return problems
 

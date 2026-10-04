@@ -6,13 +6,10 @@ With no ASI_API_KEY (or the network pulled) every answer should still come back,
 marked "scripted".
 """
 
-from __future__ import annotations
-
 import asyncio
 
 from backend.conversation.replies import reply
-from shared.contracts import Mood
-from shared.contracts import UIChildUtterance as ChildUtterance
+from shared.contracts import ChildUtterance, Mood
 from shared.contracts import UIPlantState as PlantState
 
 QUESTIONS = [
@@ -29,9 +26,9 @@ QUESTIONS = [
 ]
 
 STATES = [
-    PlantState(mood=Mood.THIRSTY, moisture_pct=18, light_pct=65),
-    PlantState(mood=Mood.HAPPY, moisture_pct=62, light_pct=70),
-    PlantState(mood=Mood.UNWELL, moisture_pct=55, light_pct=60, leaf_issues=["yellowing"]),
+    PlantState(mood=Mood.thirsty, moisture_pct=18, light_pct=65),
+    PlantState(mood=Mood.happy, moisture_pct=62, light_pct=70),
+    PlantState(mood=Mood.unwell, moisture_pct=55, light_pct=60, leaf_issues=["yellowing"]),
 ]
 
 

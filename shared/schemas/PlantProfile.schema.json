@@ -157,7 +157,7 @@
       "type": "string"
     },
     "species": {
-      "default": "Unspecified demo plant",
+      "default": "pothos",
       "title": "Species",
       "type": "string"
     },

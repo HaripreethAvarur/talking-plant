@@ -9,7 +9,6 @@
 .ruff_cache
 frontend
 backend/speech/cache
-backend/tests
 config
 *.db
 *.db-*

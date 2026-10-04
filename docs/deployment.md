@@ -100,7 +100,7 @@ network and is separately marked untested until an actual connection succeeds.
    required DB is down). Route traffic only after readiness, but do not restart the process
    just because a DB outage occurs or the in-memory retry buffer will be lost.
 6. On the laptop set `BACKEND_URL=https://YOUR-HOST`, matching `INGESTION_TOKEN`, and run
-   `make replay` / `make freewili`. Set frontend API/WSS origins and the separate viewer
+   `make replay` / `make arduino`. Set frontend API/WSS origins and the separate viewer
    authentication. Smoke-test `/ready`, one full dry→watered cycle, WSS and a restart before
    calling the deployment successful.
 

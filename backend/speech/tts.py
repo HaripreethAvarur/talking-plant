@@ -10,8 +10,6 @@ cached, synthesize() returns a SpeechAudio with audio_url=None and the UI speaks
 the text with the browser's built-in speech synthesis.
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 import logging
@@ -19,7 +17,7 @@ from pathlib import Path
 
 import httpx
 
-from backend import config
+from backend.config import get_settings
 from shared.contracts import SpeechAudio
 
 log = logging.getLogger(__name__)
@@ -38,14 +36,20 @@ VOICE_SETTINGS = {
 }
 
 
+def elevenlabs_key() -> str:
+    """The ElevenLabs key shared by speech-to-text and the voice; empty when not set."""
+    return get_settings().elevenlabs_api_key.get_secret_value()
+
+
 def is_available() -> bool:
-    return config.is_configured(config.ELEVENLABS_API_KEY)
+    return bool(elevenlabs_key())
 
 
 def cache_key(text: str) -> str:
+    settings = get_settings()
     spec = {
-        "voice": config.ELEVENLABS_VOICE_ID,
-        "model": config.ELEVENLABS_TTS_MODEL,
+        "voice": settings.elevenlabs_voice_id,
+        "model": settings.elevenlabs_tts_model,
         "format": OUTPUT_FORMAT,
         "settings": VOICE_SETTINGS,
         "text": text.strip(),
@@ -62,15 +66,16 @@ def _audio(text: str, path: Path, cached: bool) -> SpeechAudio:
 
 
 async def _request_tts(text: str) -> bytes:
-    url = f"{config.ELEVENLABS_BASE_URL}/v1/text-to-speech/{config.ELEVENLABS_VOICE_ID}"
+    settings = get_settings()
+    url = f"{settings.elevenlabs_base_url}/v1/text-to-speech/{settings.elevenlabs_voice_id}"
     async with httpx.AsyncClient(timeout=TTS_TIMEOUT_S) as client:
         resp = await client.post(
             url,
             params={"output_format": OUTPUT_FORMAT},
-            headers={"xi-api-key": config.ELEVENLABS_API_KEY, "accept": "audio/mpeg"},
+            headers={"xi-api-key": elevenlabs_key(), "accept": "audio/mpeg"},
             json={
                 "text": text,
-                "model_id": config.ELEVENLABS_TTS_MODEL,
+                "model_id": settings.elevenlabs_tts_model,
                 "voice_settings": VOICE_SETTINGS,
             },
         )

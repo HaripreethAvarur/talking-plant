@@ -1,6 +1,6 @@
 """Offline tests for Tasks 3, 5 and 7. Run from the repo root:
 
-python -m unittest discover -s backend/tests -t .
+python -m pytest tests/test_speech_and_replies.py
 """
 
 from __future__ import annotations
@@ -11,17 +11,18 @@ from pathlib import Path
 from unittest import mock
 
 import httpx
+from pydantic import SecretStr
 
-from backend import config
+from backend.config import get_settings
 from backend.conversation import replies, safety
 from backend.conversation.scripted import MOOD_LINES, REDIRECT_LINE, cacheable_lines, classify
 from backend.speech import stt, tts
-from shared.contracts import Mood
-from shared.contracts import UIChildUtterance as ChildUtterance
+from shared.contracts import ChildUtterance, Mood
 from shared.contracts import UIPlantState as PlantState
 
-THIRSTY = PlantState(mood=Mood.THIRSTY, moisture_pct=18, light_pct=65)
-HAPPY = PlantState(mood=Mood.HAPPY, moisture_pct=62, light_pct=70)
+SETTINGS = get_settings()
+THIRSTY = PlantState(mood=Mood.thirsty, moisture_pct=18, light_pct=65)
+HAPPY = PlantState(mood=Mood.happy, moisture_pct=62, light_pct=70)
 
 
 def ask(text: str) -> ChildUtterance:
@@ -51,14 +52,14 @@ class SafetyTests(unittest.TestCase):
 
 class ReplyTests(unittest.IsolatedAsyncioTestCase):
     async def test_scripted_when_no_key(self):
-        with mock.patch.object(config, "ASI_API_KEY", "your-asi-one-api-key"):
+        with mock.patch.object(SETTINGS, "asi_api_key", SecretStr("")):
             r = await replies.reply(THIRSTY, ask("Are you okay?"))
         self.assertEqual(r.source, "scripted")
         self.assertIn("18%", r.text)
 
     async def test_llm_reply_used_when_safe(self):
         with (
-            mock.patch.object(config, "ASI_API_KEY", "real-key"),
+            mock.patch.object(SETTINGS, "asi_api_key", SecretStr("real-key")),
             mock.patch.object(
                 replies, "_ask_llm", mock.AsyncMock(return_value="I'm thirsty! My soil is 18% wet.")
             ),
@@ -69,7 +70,7 @@ class ReplyTests(unittest.IsolatedAsyncioTestCase):
     async def test_falls_back_on_network_error(self):
         boom = mock.AsyncMock(side_effect=httpx.ConnectError("offline"))
         with (
-            mock.patch.object(config, "ASI_API_KEY", "real-key"),
+            mock.patch.object(SETTINGS, "asi_api_key", SecretStr("real-key")),
             mock.patch.object(replies, "_ask_llm", boom),
         ):
             r = await replies.reply(HAPPY, ask("Are you okay?"))
@@ -78,7 +79,7 @@ class ReplyTests(unittest.IsolatedAsyncioTestCase):
     async def test_falls_back_on_ungrounded_reply(self):
         fake = mock.AsyncMock(return_value="My soil is at 5%, I'm so thirsty!")
         with (
-            mock.patch.object(config, "ASI_API_KEY", "real-key"),
+            mock.patch.object(SETTINGS, "asi_api_key", SecretStr("real-key")),
             mock.patch.object(replies, "_ask_llm", fake),
         ):
             r = await replies.reply(HAPPY, ask("Are you okay?"))
@@ -90,7 +91,9 @@ class ReplyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((r.source, r.text), ("redirect", REDIRECT_LINE))
 
     def test_prompt_contains_real_readings(self):
-        system = replies.build_messages(THIRSTY, "Are you okay?", ["Watered yesterday."])[0]["content"]
+        system = replies.build_messages(THIRSTY, "Are you okay?", ["Watered yesterday."], replies.Plant())[0][
+            "content"
+        ]
         self.assertIn("soil moisture: 18%", system)
         self.assertIn("Watered yesterday.", system)
 
@@ -111,16 +114,16 @@ class TtsTests(unittest.IsolatedAsyncioTestCase):
         self.tmp.cleanup()
 
     async def test_no_key_and_not_cached_means_browser_speech(self):
-        with mock.patch.object(config, "ELEVENLABS_API_KEY", "your-elevenlabs-api-key"):
+        with mock.patch.object(SETTINGS, "elevenlabs_api_key", SecretStr("")):
             audio = await tts.synthesize("Hello!")
         self.assertIsNone(audio.audio_url)
         self.assertEqual(audio.text, "Hello!")
 
     async def test_generates_then_serves_from_cache_offline(self):
-        line = MOOD_LINES[Mood.THIRSTY]
+        line = MOOD_LINES[Mood.thirsty]
         fake = mock.AsyncMock(return_value=b"ID3fake-mp3")
         with (
-            mock.patch.object(config, "ELEVENLABS_API_KEY", "real-key"),
+            mock.patch.object(SETTINGS, "elevenlabs_api_key", SecretStr("real-key")),
             mock.patch.object(tts, "_request_tts", fake),
         ):
             first = await tts.synthesize(line)
@@ -129,7 +132,7 @@ class TtsTests(unittest.IsolatedAsyncioTestCase):
 
         offline = mock.AsyncMock(side_effect=httpx.ConnectError("offline"))
         with (
-            mock.patch.object(config, "ELEVENLABS_API_KEY", "real-key"),
+            mock.patch.object(SETTINGS, "elevenlabs_api_key", SecretStr("real-key")),
             mock.patch.object(tts, "_request_tts", offline),
         ):
             second = await tts.synthesize(line)
@@ -140,7 +143,7 @@ class TtsTests(unittest.IsolatedAsyncioTestCase):
     async def test_network_error_falls_back(self):
         offline = mock.AsyncMock(side_effect=httpx.ConnectError("offline"))
         with (
-            mock.patch.object(config, "ELEVENLABS_API_KEY", "real-key"),
+            mock.patch.object(SETTINGS, "elevenlabs_api_key", SecretStr("real-key")),
             mock.patch.object(tts, "_request_tts", offline),
         ):
             audio = await tts.synthesize("Something new")
@@ -148,14 +151,14 @@ class TtsTests(unittest.IsolatedAsyncioTestCase):
 
     def test_core_lines_are_cacheable(self):
         lines = cacheable_lines()
-        self.assertIn(MOOD_LINES[Mood.THIRSTY], lines)
-        self.assertIn(MOOD_LINES[Mood.GRATEFUL], lines)
+        self.assertIn(MOOD_LINES[Mood.thirsty], lines)
+        self.assertIn(MOOD_LINES[Mood.grateful], lines)
         self.assertFalse(any("{" in line for line in lines))
 
 
 class SttTests(unittest.IsolatedAsyncioTestCase):
     async def test_unavailable_without_key(self):
-        with mock.patch.object(config, "ELEVENLABS_API_KEY", "your-elevenlabs-api-key"):
+        with mock.patch.object(SETTINGS, "elevenlabs_api_key", SecretStr("")):
             with self.assertRaises(stt.SttUnavailable):
                 await stt.transcribe(b"audio")
 
@@ -167,7 +170,7 @@ class SttTests(unittest.IsolatedAsyncioTestCase):
 
         real_client = httpx.AsyncClient
         with (
-            mock.patch.object(config, "ELEVENLABS_API_KEY", "real-key"),
+            mock.patch.object(SETTINGS, "elevenlabs_api_key", SecretStr("real-key")),
             mock.patch.object(
                 stt.httpx,
                 "AsyncClient",
@@ -181,7 +184,7 @@ class SttTests(unittest.IsolatedAsyncioTestCase):
         real_client = httpx.AsyncClient
         handler = lambda request: httpx.Response(200, json={"text": ""})  # noqa: E731
         with (
-            mock.patch.object(config, "ELEVENLABS_API_KEY", "real-key"),
+            mock.patch.object(SETTINGS, "elevenlabs_api_key", SecretStr("real-key")),
             mock.patch.object(
                 stt.httpx,
                 "AsyncClient",

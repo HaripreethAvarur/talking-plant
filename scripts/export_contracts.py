@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
 
+from backend.conversation.scripted import MOOD_LINES
 from backend.sensors.simulator import scenario_reading
 from shared.contracts import (
     ChildUtterance,
@@ -16,9 +17,11 @@ from shared.contracts import (
     PlantProfile,
     PlantState,
     Source,
+    SpeechAudio,
     Status,
     StreamMessage,
     TouchObservation,
+    UIPlantState,
 )
 
 
@@ -49,7 +52,7 @@ def main():
         kind="mood_changed",
         mood=Mood.thirsty,
         reason="Persistent dry soil.",
-        suggested_text="I'm thirsty.",
+        suggested_text=MOOD_LINES[Mood.thirsty],
         observation_id=sensor.event_id,
     )
     leaf = LeafObservation(
@@ -62,9 +65,8 @@ def main():
         brown_proportion=0.02,
         region=(0, 0, 100, 100),
     )
-    utterance = ChildUtterance(
-        event_id=UUID(int=4), plant_id="plant-1", timestamp=at, source=Source.mock, text="Do you need water?"
-    )
+    ts = at.timestamp()
+    utterance = ChildUtterance(text="Do you need water?", source="button", ts=ts)
     context = ConversationContext(
         plant_id="plant-1", timestamp=at, profile=profile, state=state, recent_events=[event]
     )
@@ -88,6 +90,18 @@ def main():
             session_id=UUID(int=7),
         ),
         ListenRequest(event_id=UUID(int=8), plant_id="plant-1", timestamp=at),
+        UIPlantState(
+            mood=Mood.thirsty,
+            message=MOOD_LINES[Mood.thirsty],
+            moisture_pct=15,
+            light_pct=58.7,
+            leaf_issues=[],
+            sensor_health=Status.ok,
+            light_unit="raw",
+            light_value=600,
+            ts=ts,
+        ),
+        SpeechAudio(text=MOOD_LINES[Mood.thirsty], audio_url="/audio/0123456789abcdef01234567.mp3", ts=ts),
     ]
     for obj in samples:
         name = type(obj).__name__
@@ -101,7 +115,7 @@ def main():
             "kind": "watering",
             "mood": Mood.grateful,
             "reason": "Sustained moisture rise indicates watering.",
-            "suggested_text": "Thank you.",
+            "suggested_text": MOOD_LINES[Mood.grateful],
         }
     )
     (root / "samples" / "WateringEvent.json").write_text(watering.model_dump_json(indent=2) + "\n")

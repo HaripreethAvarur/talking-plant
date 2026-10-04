@@ -1,12 +1,10 @@
-"""Compatibility entrypoint: UI, speech routes and sensor API now share one backend."""
+"""Run the backend: python -m backend.server (host and port from HOST/PORT in .env)."""
 
-from backend import config
+import uvicorn
+
 from backend.api import create_app
-
-app = create_app()
-hub = app.state.ui
+from backend.config import get_settings
 
 if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host=config.SERVER_HOST, port=config.SERVER_PORT)
+    settings = get_settings()
+    uvicorn.run(create_app(settings), host=settings.host, port=settings.port)

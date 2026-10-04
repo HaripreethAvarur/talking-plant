@@ -7,6 +7,6 @@
   "kind": "mood_changed",
   "mood": "thirsty",
   "reason": "Persistent dry soil.",
-  "suggested_text": "I'm thirsty.",
+  "suggested_text": "I'm thirsty! Can you give me some water?",
   "observation_id": "00000000-0000-0000-0000-000000000001"
 }
