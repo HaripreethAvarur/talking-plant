@@ -16,7 +16,7 @@ function Chip({ tone, children }: { tone: Tone; children: React.ReactNode }) {
 function Meter({ value, color, marks = [] }: { value: number | null; color: string; marks?: number[] }) {
   const pct = value == null ? 0 : Math.max(0, Math.min(100, value));
   return (
-    <div className="meter" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+    <div className="meter" role="meter" aria-label="Sensor reading" aria-valuetext={value == null ? "Waiting for sensor" : undefined} aria-valuemin={0} aria-valuemax={100} aria-valuenow={value == null ? undefined : Math.round(pct)}>
       <div className="meter-fill" style={{ width: `${pct}%`, background: color }} />
       {marks.map((m) => <span key={m} className="meter-mark" style={{ left: `${m}%` }} />)}
     </div>
@@ -82,7 +82,7 @@ export function StatCards({ state, face, dry, soggy }: Props) {
           {state?.air_aqi == null ? "–" : Math.round(state.air_aqi)}
           <small> AQI</small>
         </strong>
-        <Meter value={state?.air_aqi == null ? null : Math.min(100, (state.air_aqi / 200) * 100)} color="linear-gradient(90deg,#2ec4b6,#7ed957)" />
+        <p className="aqi-explanation">Outdoor air · lower AQI is better</p>
         <Chip tone={airTone}>{airText}</Chip>
       </article>
 

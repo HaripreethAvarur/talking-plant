@@ -46,6 +46,8 @@ export default function App() {
   const [waiting, setWaiting] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
   const nextId = useRef(1);
+  const [panel, setPanel] = useState<"conversation" | "explore" | null>(null);
+  const lastMessage = useRef<string | null>(null);
 
   const say = useCallback((from: ChatMessage["from"], text: string) => {
     setMessages((list) => [...list, { id: nextId.current++, from, text }].slice(-MAX_MESSAGES));
@@ -63,9 +65,9 @@ export default function App() {
 
   const ask = useCallback(
     (text: string, source: ChildUtterance["source"]) => {
+      if (!sendUtterance(text, source)) return;
       say("kid", text);
       setWaiting(true);
-      sendUtterance(text, source);
     },
     [say, sendUtterance],
   );
@@ -81,7 +83,8 @@ export default function App() {
 
   // Every line the plant says goes into the chat.
   useEffect(() => {
-    if (state?.message) {
+    if (state?.message && `${state.ts}:${state.message}` !== lastMessage.current) {
+      lastMessage.current = `${state.ts}:${state.message}`;
       say("plant", state.message);
       setWaiting(false);
     }
@@ -124,7 +127,7 @@ export default function App() {
 
   const info = health ?? FALLBACK_HEALTH;
   const name = info.plant.name;
-  const offline = !state || OFFLINE_HEALTH.includes(state.sensor_health ?? "missing");
+  const offline = !connected || !state || OFFLINE_HEALTH.includes(state.sensor_health ?? "missing");
   const face: Face = offline ? "offline" : state.mood;
   const registered = health?.registered !== false;
   const listening = talk.status === "listening";
@@ -161,21 +164,22 @@ export default function App() {
         </div>
         <nav className="tabs" aria-label="Pages">
           <a href="#plant" className={tab === "plant" ? "tab tab-on" : "tab"} aria-current={tab === "plant" ? "page" : undefined}>
-            🪴 My Plant
+            My garden
           </a>
           <a href="#leaderboard" className={tab === "leaderboard" ? "tab tab-on" : "tab"} aria-current={tab === "leaderboard" ? "page" : undefined}>
-            🏆 Leaderboard
+            Garden club
           </a>
         </nav>
         <div className="status">
           {wake.active && <span className="pill pill-ear" title="Wake word is on">👂 “Hi {name}!”</span>}
+          <span className="connection-label">{connected ? "Live" : "Connecting"}</span>
           <span className={`dot ${connected ? "dot-on" : "dot-off"}`} title={connected ? "Connected" : "Reconnecting…"} />
         </div>
       </header>
 
-      {!voice.unlocked && (
+      {!voice.unlocked && tab === "plant" && (
         <button className="sound-banner" onClick={() => void voice.unlock().then(() => talk.prepare())}>
-          🔈 Tap anywhere to turn on my voice!
+          Turn on plant voice
         </button>
       )}
 
@@ -184,29 +188,39 @@ export default function App() {
       ) : (
         <>
           <main className="home">
-            <section className="stage">
-              {listening && <span className="stage-badge badge-listen">👂 I'm listening!</span>}
-              {talk.status === "thinking" && <span className="stage-badge badge-think">💭 Thinking…</span>}
+            <section className="stage" aria-label={`${name}'s garden`}>
+              <div className="garden-intro"><span className="eyebrow">YOUR LITTLE CORNER OF NATURE</span><h2>A little care.<br />A lot of personality.</h2></div>
+              <div className="plant-speech" role="status">
+                <span className="eyebrow">{name}</span>
+                <p>{listening ? "I'm listening. What's on your mind?" : waiting || talk.status === "thinking" ? "Let me think about that…" : [...messages].reverse().find(m => m.from === "plant")?.text ?? (offline ? "My sensors are taking a little break. I'll be back soon." : `Hi! I'm ${name}. Come say hello.`)}</p>
+              </div>
               <div className="stage-plant">
                 <PlantCharacter face={face} speaking={voice.speaking} level={voice.level} listening={listening} />
               </div>
               <span className={`caption caption-${face}`}>{CAPTIONS[face]}</span>
             </section>
-            <div className="side">
-              <ChatFeed
-                messages={messages}
-                plantName={name}
-                thinking={waiting || talk.status === "thinking"}
-                hint={`Say hi to ${name}! Tap the microphone, pat my leaf, or pick a question below.`}
-              />
-              <StatCards state={state} face={face} dry={info.thresholds?.dry ?? 30} soggy={info.thresholds?.soggy ?? 90} />
-            </div>
+            <section className="garden-tools" aria-label="Plant care">
+              <div className="care-summary">
+                <span><i aria-hidden className="care-dot water-dot" />Soil <strong>{offline || state?.moisture_pct == null ? "Waiting for sensor" : state.moisture_pct < (info.thresholds?.dry ?? 30) ? "Needs water" : state.moisture_pct > (info.thresholds?.soggy ?? 90) ? "Too wet" : "Just right"}</strong></span>
+                <span><i aria-hidden className="care-dot light-dot" />Light <strong>{offline || state?.light_pct == null ? "Waiting for sensor" : face === "too_dark" ? "Needs light" : face === "sleepy" ? "Resting" : "Enough light"}</strong></span>
+                <span><i aria-hidden className="care-dot air-dot" />Outdoor air <strong>{state?.air_aqi == null ? "Checking" : state.air_aqi <= 50 ? "Good" : state.air_aqi <= 100 ? "Moderate" : "Unhealthy for some"}</strong></span>
+              </div>
+              <div className="panel-tabs">
+                <button aria-expanded={panel === "conversation"} aria-controls="garden-panel" onClick={() => setPanel(panel === "conversation" ? null : "conversation")}>Conversation</button>
+                <button aria-expanded={panel === "explore"} aria-controls="garden-panel" onClick={() => setPanel(panel === "explore" ? null : "explore")}>Explore my plant <span aria-hidden>↗</span></button>
+              </div>
+              <div id="garden-panel">
+                {panel === "conversation" && <ChatFeed messages={messages} plantName={name} thinking={waiting || talk.status === "thinking"} hint={`Your conversation with ${name} will appear here.`} />}
+                {panel === "explore" && <><p className="explore-note">A closer look at my world. Soil moisture and light are sensor readings; AQI describes outdoor air near my location.</p><StatCards state={offline ? null : state} face={face} dry={info.thresholds?.dry ?? 30} soggy={info.thresholds?.soggy ?? 90} /></>}
+              </div>
+            </section>
           </main>
           <TalkDock
             status={talk.status}
             error={talk.error}
             plantName={name}
-            wakeWord={wake.supported}
+            wakeWord={wake.active}
+            disabled={!connected || waiting}
             quickQuestions={info.quick_questions}
             onMic={onMic}
             onQuestion={(q) => ask(q, "button")}
@@ -214,6 +228,7 @@ export default function App() {
         </>
       )}
 
+      <footer className="garden-footer">Grow curious. <span>v0.0.2</span></footer>
       {showDemo && <DemoPanel demoMode={!!info.demo_mode} onClose={() => setShowDemo(false)} />}
     </div>
   );

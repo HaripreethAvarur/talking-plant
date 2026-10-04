@@ -1,7 +1,7 @@
 import { useId } from "react";
 import type { Face } from "../contracts";
 
-const INK = "#2b1a4a";
+const INK = "#203c32";
 
 /** Head colours (top, bottom of the gradient) per face. */
 const SKIN: Record<Face, [string, string]> = {
@@ -157,8 +157,8 @@ export function PlantCharacter({ face, speaking, level, listening }: Props) {
           <stop offset="100%" stopColor={bottom} />
         </linearGradient>
         <linearGradient id={potId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#ff8a5b" />
-          <stop offset="100%" stopColor="#f2574a" />
+          <stop offset="0%" stopColor="#eeb58c" />
+          <stop offset="100%" stopColor="#d98c65" />
         </linearGradient>
       </defs>
 
@@ -168,14 +168,8 @@ export function PlantCharacter({ face, speaking, level, listening }: Props) {
         {/* pot */}
         <g className="pot">
           <path d="M84 276 h132 l-14 84 q-2 10 -12 10 h-80 q-10 0 -12 -10 z" fill={`url(#${potId})`} stroke={INK} strokeWidth={6} strokeLinejoin="round" />
-          <g fill="#fff" opacity={0.85}>
-            <circle cx={112} cy={312} r={6} />
-            <circle cx={150} cy={330} r={7} />
-            <circle cx={188} cy={310} r={6} />
-            <circle cx={130} cy={350} r={4} />
-            <circle cx={172} cy={350} r={4} />
-          </g>
-          <rect x={74} y={258} width={152} height={30} rx={14} fill="#ffb347" stroke={INK} strokeWidth={6} />
+
+          <rect x={74} y={258} width={152} height={30} rx={14} fill="#f3c5a4" stroke={INK} strokeWidth={6} />
           <ellipse cx={150} cy={262} rx={66} ry={8} fill={soil} />
         </g>
 
@@ -199,7 +193,7 @@ export function PlantCharacter({ face, speaking, level, listening }: Props) {
             <path d="M150 20 C168 2 190 6 196 18 C182 30 162 30 150 20 z" fill={skin} stroke={INK} strokeWidth={5} strokeLinejoin="round" />
           </g>
           <path d="M150 40 C82 40 52 92 54 146 C56 200 98 228 150 228 C202 228 244 200 246 146 C248 92 218 40 150 40 z" fill={skin} stroke={INK} strokeWidth={6} />
-          <ellipse cx={104} cy={86} rx={26} ry={14} fill="#fff" opacity={0.35} transform="rotate(-28 104 86)" />
+
           {face !== "offline" && face !== "unwell" && (
             <g fill="#ff7aa8" opacity={face === "sleepy" ? 0.4 : 0.6}>
               <ellipse cx={86} cy={186} rx={16} ry={9} />
