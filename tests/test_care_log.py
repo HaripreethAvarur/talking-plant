@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from pydantic import SecretStr, ValidationError
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, insert, select, text
 
 from backend.config import get_settings
 from backend.database.migrate import MIGRATIONS, migrate
@@ -71,7 +71,7 @@ def test_existing_v1_database_gains_v2_tables(db_settings):
     migrate(store.engine)
     migrate(store.engine)  # idempotent
     with store.engine.connect() as conn:
-        assert sorted(conn.execute(select(versions.c.version)).scalars()) == [1, 2]
+        assert sorted(conn.execute(select(versions.c.version)).scalars()) == sorted(MIGRATIONS)
         assert conn.execute(select(plants)).all() == []
     store.close()
 
@@ -96,16 +96,16 @@ def test_registration_validation(changes):
         PlantRegistration(**(values | changes))
 
 
-def test_hourly_rows_round_to_the_hour_and_replace_on_relog(store):
+def test_rows_are_per_interval_start_and_replace_on_relog(store):
     register(store, "maya")
     log(store, "maya", NOW, sun_pct=70, water_pct=20, mood=Mood.thirsty, health="Leaves look a bit limp.")
-    log(store, "maya", NOW + timedelta(minutes=10), sun_pct=72, water_pct=65, mood=Mood.happy)
+    log(store, "maya", NOW + timedelta(seconds=20), sun_pct=72, water_pct=65, mood=Mood.happy)
     log(store, "maya", NOW - timedelta(hours=1), water_pct=22)
     rows = store.recent_hourly("maya")
-    assert [row.hour.hour for row in rows] == [17, 18]  # oldest first, one row per hour
+    assert [row.hour.hour for row in rows] == [17, 18]  # oldest first, one row per interval
     assert rows[1].water_pct == 65 and rows[1].mood == Mood.happy
-    assert rows[1].health is None  # a re-log replaces the whole hour
-    assert rows[1].hour == NOW.replace(minute=0)
+    assert rows[1].health is None  # a re-log replaces the whole row
+    assert rows[1].hour == NOW.replace(second=0)
     assert [r.hour.hour for r in store.recent_hourly("maya", limit=1)] == [18]
 
 
@@ -136,7 +136,7 @@ def test_leaderboard_counts_happy_days_in_the_last_week(store):
             hour = NOW - timedelta(days=start_days_ago + offset)
             log(store, username, hour, mood=mood, day_mood=mood)
 
-    days("ana", [Mood.happy, Mood.grateful, Mood.happy, Mood.thirsty])  # 3 happy days
+    days("ana", [Mood.happy, Mood.happy, Mood.soggy, Mood.happy])  # 3 happy days
     days("ben", [Mood.happy, Mood.happy, Mood.happy])  # 3 happy days
     days("cai", [Mood.happy] * 3, start_days_ago=8)  # all older than a week
     log(store, "cai", NOW - timedelta(hours=2), mood=Mood.happy)  # hourly mood alone doesn't count
@@ -188,3 +188,36 @@ def test_removing_a_plant_removes_its_log(store):
         conn.execute(delete(plants).where(plants.c.username == "maya"))
     with store.engine.connect() as conn:
         assert conn.execute(select(hourly)).all() == []
+
+
+OLD_MOODS = "('happy', 'thirsty', 'too_dark', 'unwell', 'grateful')"
+
+
+def test_version_3_allows_soggy_and_sleepy_and_keeps_rows(db_settings):
+    store = Store(db_settings)
+    id_type = "SERIAL" if store.engine.dialect.name == "postgresql" else "INTEGER"
+    with store.engine.begin() as conn:  # a version-2 database with the original five moods
+        versions.create(conn)
+        metadata.create_all(conn, tables=[*MIGRATIONS[1], plants])
+        conn.execute(
+            text(
+                f"CREATE TABLE hourly_readings (id {id_type} PRIMARY KEY, username VARCHAR(32) NOT NULL "
+                "REFERENCES plants (username) ON DELETE CASCADE, hour TIMESTAMP WITH TIME ZONE NOT NULL, "
+                "sun_pct FLOAT, water_pct FLOAT, air_aqi FLOAT, health TEXT, mood VARCHAR(16), "
+                "day_mood VARCHAR(16), CONSTRAINT one_row_per_hour UNIQUE (username, hour), "
+                f"CONSTRAINT mood_known CHECK (mood IS NULL OR mood IN {OLD_MOODS}), "
+                f"CONSTRAINT day_mood_known CHECK (day_mood IS NULL OR day_mood IN {OLD_MOODS}))"
+            )
+        )
+        conn.execute(insert(versions), [{"version": 1}, {"version": 2}])
+    register(store, "maya")
+    with store.engine.begin() as conn:
+        conn.execute(insert(hourly).values(username="maya", hour=NOW, mood="happy"))
+    migrate(store.engine)
+    log(store, "maya", NOW + timedelta(hours=1), mood=Mood.sleepy)
+    log(store, "maya", NOW + timedelta(hours=2), mood=Mood.soggy, day_mood=Mood.soggy)
+    assert [row.mood for row in store.recent_hourly("maya")] == [Mood.happy, Mood.sleepy, Mood.soggy]
+    with pytest.raises(Exception):
+        with store.engine.begin() as conn:
+            conn.execute(insert(hourly).values(username="maya", hour=NOW - timedelta(hours=1), mood="sad"))
+    store.close()

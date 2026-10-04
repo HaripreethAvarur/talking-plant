@@ -238,7 +238,9 @@
       "enum": [
         "happy",
         "thirsty",
+        "soggy",
         "too_dark",
+        "sleepy",
         "unwell",
         "grateful"
       ],

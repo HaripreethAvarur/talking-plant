@@ -15,6 +15,19 @@ def no_paid_apis(monkeypatch):
         monkeypatch.setattr(get_settings(), key, SecretStr(""))
 
 
+@pytest.fixture(autouse=True)
+def no_network_lookups(monkeypatch):
+    """The care log's air-quality and camera/Ollama calls are faked in tests."""
+    from backend import air
+    from backend.vision import health
+
+    async def nothing(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(air, "us_aqi", nothing)
+    monkeypatch.setattr(health, "look", nothing)
+
+
 @pytest.fixture
 def settings(tmp_path):
     return Settings(_env_file=None, database_url=f"sqlite:///{tmp_path}/plant.db", future_skew_seconds=120)

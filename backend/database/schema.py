@@ -14,6 +14,8 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 
+from shared.contracts import Mood
+
 metadata = MetaData()
 versions = Table("schema_migrations", metadata, Column("version", Integer, primary_key=True))
 
@@ -41,7 +43,7 @@ checkpoints = Table(
 )
 
 # --- Version 2: kids' plants, hourly care log, leaderboard ------------------------
-MOODS = ("happy", "thirsty", "too_dark", "unwell", "grateful")
+MOODS = tuple(mood.value for mood in Mood)
 plants = Table(
     "plants",
     metadata,

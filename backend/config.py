@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     asi_model: str = "asi1-mini"
     asi_timeout_s: float = Field(default=4, gt=0)
 
+    # Hourly care log (sun, water, air, how the plant looks, ASI mood) and the nightly day label
+    log_interval_minutes: float = Field(default=60, gt=0, description="use 1 for demos")
+    day_label_time: str = Field(default="23:30", pattern=r"^\d{2}:\d{2}$", description="local time")
+    ollama_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "llama3.2-vision"  # Meta; needs ~8 GB RAM. moondream runs on small laptops.
+    ollama_timeout_s: float = Field(default=180, gt=0)
+    camera_index: int = 0
+    camera_image: Path | None = None  # describe this file instead of the webcam (testing)
+
     # Plant Care Agent on Agentverse, chat-able from ASI:One (python -m backend.agent.chat_agent)
     agent_name: str = "talking-plant-sprout"
     agent_seed: SecretStr = SecretStr("")

@@ -1,5 +1,110 @@
 {
   "$defs": {
+    "HourlyReading": {
+      "additionalProperties": false,
+      "description": "One row per plant per logging interval (an hour normally; a minute in demos).\n`hour` is the interval's start. mood is ASI's label for it; day_mood is set only on\nthe last row of each day, by the nightly job, and feeds the leaderboard.",
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "username": {
+          "pattern": "^[A-Za-z0-9_.-]{2,32}$",
+          "title": "Username",
+          "type": "string"
+        },
+        "hour": {
+          "format": "date-time",
+          "title": "Hour",
+          "type": "string"
+        },
+        "sun_pct": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sun Pct"
+        },
+        "water_pct": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Water Pct"
+        },
+        "air_aqi": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Air Aqi"
+        },
+        "health": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ollama's description of the photo",
+          "title": "Health"
+        },
+        "mood": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Mood"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "day_mood": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Mood"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "username",
+        "hour"
+      ],
+      "title": "HourlyReading",
+      "type": "object"
+    },
     "LeafObservation": {
       "additionalProperties": false,
       "properties": {
@@ -238,7 +343,9 @@
       "enum": [
         "happy",
         "thirsty",
+        "soggy",
         "too_dark",
+        "sleepy",
         "unwell",
         "grateful"
       ],
@@ -353,6 +460,28 @@
         },
         "thresholds": {
           "$ref": "#/$defs/Thresholds"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_.-]{2,32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Username"
+        },
+        "plant_type": {
+          "$ref": "#/$defs/PlantType",
+          "default": "plant"
+        },
+        "timezone": {
+          "default": "America/Detroit",
+          "title": "Timezone",
+          "type": "string"
         }
       },
       "title": "PlantProfile",
@@ -468,6 +597,16 @@
       ],
       "title": "PlantState",
       "type": "object"
+    },
+    "PlantType": {
+      "description": "Moisture needs differ by category; per-species thresholds aren't publicly available.",
+      "enum": [
+        "succulent",
+        "plant",
+        "tree"
+      ],
+      "title": "PlantType",
+      "type": "string"
     },
     "Source": {
       "enum": [
@@ -623,6 +762,42 @@
           "exclusiveMinimum": 0,
           "title": "Leaf Stale Seconds",
           "type": "number"
+        },
+        "soggy_enter": {
+          "default": 90,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Soggy Enter",
+          "type": "number"
+        },
+        "soggy_exit": {
+          "default": 80,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Soggy Exit",
+          "type": "number"
+        },
+        "soggy_seconds": {
+          "default": 120,
+          "description": "how long soil must stay very wet",
+          "minimum": 0,
+          "title": "Soggy Seconds",
+          "type": "number"
+        },
+        "night_start_hour": {
+          "default": 21,
+          "description": "local time; dark is normal from here",
+          "maximum": 23,
+          "minimum": 0,
+          "title": "Night Start Hour",
+          "type": "integer"
+        },
+        "night_end_hour": {
+          "default": 7,
+          "maximum": 23,
+          "minimum": 0,
+          "title": "Night End Hour",
+          "type": "integer"
         }
       },
       "title": "Thresholds",
@@ -739,6 +914,14 @@
         "$ref": "#/$defs/PlantEvent"
       },
       "title": "Recent Events",
+      "type": "array"
+    },
+    "hourly": {
+      "description": "care log, oldest first",
+      "items": {
+        "$ref": "#/$defs/HourlyReading"
+      },
+      "title": "Hourly",
       "type": "array"
     },
     "guidance": {

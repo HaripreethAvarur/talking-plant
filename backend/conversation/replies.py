@@ -48,7 +48,9 @@ def _facts(state: PlantState) -> str:
         lines.append(f"- soil moisture: {round(state.moisture_pct)}%")
     if state.light_pct is not None:
         lines.append(f"- light: {round(state.light_pct)}%")
-    if state.leaf_issues is None:
+    if state.looks:
+        lines.append(f"- the camera's latest description of me (may be imperfect): {state.looks}")
+    elif state.leaf_issues is None:
         lines.append("- the camera has not looked at the leaves recently")
     elif state.leaf_issues:
         lines.append(f"- the camera sees these leaf problems: {', '.join(state.leaf_issues)}")
@@ -125,6 +127,7 @@ async def reply(
     utterance: ChildUtterance,
     history: list[str] | None = None,
     plant: Plant | None = None,
+    hourly: list[HourlyReading] = (),
 ) -> Reply:
     plant = plant or Plant()
     question = utterance.text.strip()
@@ -142,7 +145,7 @@ async def reply(
         return scripted("ASI_API_KEY not set")
 
     try:
-        text = await _ask_llm(build_messages(state, question, history or [], plant))
+        text = await _ask_llm(build_messages(state, question, history or [], plant, list(hourly)))
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         log.warning("ASI:One call failed, using scripted reply: %s", exc)
         return scripted(f"llm error: {exc.__class__.__name__}")

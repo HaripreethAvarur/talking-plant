@@ -170,5 +170,5 @@ username, and `hourly_readings`, one row per plant per hour, unique on
 
 `Store.purge(now)` keeps 30 days of hourly rows and care events, and 24 hours of raw
 per-second sensor, touch and leaf records (they only need to outlive restart
-de-duplication). The leaderboard counts days whose `day_mood` is `happy` or `grateful`
+de-duplication). The leaderboard counts days whose `day_mood` is `happy`
 within the last 7 days; plants with equal counts share a rank.

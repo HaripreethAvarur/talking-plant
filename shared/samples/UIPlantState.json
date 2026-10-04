@@ -5,6 +5,7 @@
   "moisture_pct": 15.0,
   "light_pct": 58.7,
   "leaf_issues": [],
+  "looks": null,
   "ts": 1790942400.0,
   "sensor_health": "ok",
   "light_unit": "raw",

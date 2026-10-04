@@ -35,6 +35,7 @@ _PERCENT = re.compile(r"(\d{1,3})\s*(%|percent)", re.IGNORECASE)
 _PROBLEM_WORDS = {
     "thirsty": re.compile(r"\b(thirsty|dry|parched)\b", re.IGNORECASE),
     "dark": re.compile(r"\b(too dark|dark in here|need more light|not enough light)\b", re.IGNORECASE),
+    "wet": re.compile(r"\b(too wet|soggy|too much water|overwatered|drowning)\b", re.IGNORECASE),
     "leaves": re.compile(r"\b(yellow|brown|wilt|wilting|wilted|sick|droopy|disease)\b", re.IGNORECASE),
 }
 
@@ -49,10 +50,16 @@ def _real_problems(state: PlantState) -> set[str]:
         state.moisture_pct is not None and state.moisture_pct < MOISTURE_LOW_PCT
     ):
         problems.add("thirsty")
-    if state.mood == Mood.too_dark or (state.light_pct is not None and state.light_pct < LIGHT_LOW_PCT):
+    if state.mood == Mood.soggy:
+        problems.add("wet")
+    if state.mood in (Mood.too_dark, Mood.sleepy) or (
+        state.light_pct is not None and state.light_pct < LIGHT_LOW_PCT
+    ):
         problems.add("dark")
     if state.mood == Mood.unwell or state.leaf_issues:
         problems.add("leaves")
+    if state.looks and _PROBLEM_WORDS["leaves"].search(state.looks):
+        problems.add("leaves")  # the camera description mentions it
     return problems
 
 

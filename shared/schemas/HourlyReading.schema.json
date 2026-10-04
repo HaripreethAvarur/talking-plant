@@ -4,7 +4,9 @@
       "enum": [
         "happy",
         "thirsty",
+        "soggy",
         "too_dark",
+        "sleepy",
         "unwell",
         "grateful"
       ],
@@ -13,7 +15,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "One row per plant per hour. mood is ASI's label for the hour; day_mood is set only\non the last row of each day, by the nightly job, and feeds the leaderboard.",
+  "description": "One row per plant per logging interval (an hour normally; a minute in demos).\n`hour` is the interval's start. mood is ASI's label for it; day_mood is set only on\nthe last row of each day, by the nightly job, and feeds the leaderboard.",
   "properties": {
     "schema_version": {
       "const": "1.0",

@@ -4,7 +4,9 @@
       "enum": [
         "happy",
         "thirsty",
+        "soggy",
         "too_dark",
+        "sleepy",
         "unwell",
         "grateful"
       ],
@@ -85,6 +87,18 @@
       ],
       "default": null,
       "title": "Leaf Issues"
+    },
+    "looks": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Looks"
     },
     "ts": {
       "title": "Ts",

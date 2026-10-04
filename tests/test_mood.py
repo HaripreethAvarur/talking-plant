@@ -2,7 +2,10 @@ from datetime import timedelta
 
 from backend.agent.mood import MoodEngine
 from backend.conversation.scripted import MOOD_LINES
-from shared.contracts import LeafObservation, Mood, PlantProfile, Source, Status
+from shared.contracts import LeafObservation, Mood, PlantProfile, Source, Status, Thresholds
+
+# No night hours, so "dark" always means too_dark whatever time the tests run.
+DAYTIME = PlantProfile(thresholds=Thresholds(night_start_hour=0, night_end_hour=0))
 
 
 def feed(engine, row):
@@ -76,7 +79,7 @@ def test_isolated_spike_and_sustained_rise(reading):
 
 
 def test_dark_units_priority_and_leaf_confirmation(reading):
-    engine = MoodEngine(PlantProfile())
+    engine = MoodEngine(DAYTIME)
     for step in range(6):
         row = reading(step, "dark")
         row.light.unit = "raw"

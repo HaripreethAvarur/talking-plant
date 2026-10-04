@@ -13,7 +13,7 @@ from shared.contracts import HourlyReading, LeaderboardEntry, PlantRegistration
 HISTORY_DAYS = 30  # hourly rows and care events are kept this long
 RAW_HOURS = 24  # per-second sensor/touch/leaf records only need to outlive restart dedup
 RAW_KINDS = ("sensor", "touch_observation", "leaf")
-HAPPY_DAY_MOODS = ("happy", "grateful")
+HAPPY_DAY_MOODS = ("happy",)
 LEADERBOARD_DAYS = 7
 
 
@@ -170,6 +170,25 @@ class Store:
         return [
             HourlyReading(**{k: v for k, v in row.items() if k != "id"} | {"hour": _utc(row["hour"])})
             for row in reversed(rows)
+        ]
+
+    def hourly_between(self, username: str, start: datetime, end: datetime) -> list[HourlyReading]:
+        """Rows with start <= hour < end, oldest first."""
+        with self.engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    select(hourly)
+                    .where(
+                        hourly.c.username == username, hourly.c.hour >= _utc(start), hourly.c.hour < _utc(end)
+                    )
+                    .order_by(hourly.c.hour)
+                )
+                .mappings()
+                .all()
+            )
+        return [
+            HourlyReading(**{k: v for k, v in row.items() if k != "id"} | {"hour": _utc(row["hour"])})
+            for row in rows
         ]
 
     def set_day_mood(self, username: str, day_start: datetime, mood) -> bool:

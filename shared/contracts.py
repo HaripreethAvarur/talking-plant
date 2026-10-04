@@ -57,9 +57,16 @@ class Status(str, Enum):
 class Mood(str, Enum):
     happy = "happy"
     thirsty = "thirsty"
-    too_dark = "too_dark"
+    soggy = "soggy"  # soil stayed very wet: too much water
+    too_dark = "too_dark"  # dark during the day
+    sleepy = "sleepy"  # dark at night: normal, the plant is resting
     unwell = "unwell"
-    grateful = "grateful"
+    grateful = "grateful"  # a few seconds after a watering; live face only, never a log label
+
+
+# Labels ASI:One may give an hour or a day. Grateful is a moment, not a state.
+LOG_MOODS = (Mood.happy, Mood.thirsty, Mood.soggy, Mood.too_dark, Mood.sleepy, Mood.unwell)
+DAY_MOODS = (Mood.happy, Mood.thirsty, Mood.soggy, Mood.too_dark, Mood.unwell)
 
 
 Percent = Annotated[float, Field(ge=0, le=100)]
@@ -169,11 +176,18 @@ class Thresholds(Contract):
     leaf_color_exit: Proportion = 0.25
     leaf_confirmations: int = Field(default=2, ge=1)
     leaf_stale_seconds: float = Field(default=300, gt=0)
+    soggy_enter: Percent = 90
+    soggy_exit: Percent = 80
+    soggy_seconds: float = Field(default=120, ge=0, description="how long soil must stay very wet")
+    night_start_hour: int = Field(default=21, ge=0, le=23, description="local time; dark is normal from here")
+    night_end_hour: int = Field(default=7, ge=0, le=23)
 
     @model_validator(mode="after")
     def ordered(self):
         if self.dry_exit <= self.dry_enter or self.dark_exit <= self.dark_enter:
             raise ValueError("exit thresholds must exceed enter thresholds")
+        if not self.dry_exit < self.soggy_exit < self.soggy_enter:
+            raise ValueError("moisture bands must be ordered: dry exit < soggy exit < soggy enter")
         if self.leaf_color_exit >= self.leaf_color_enter:
             raise ValueError("leaf exit must be below enter")
         if self.watering_sustain >= self.watering_window:
@@ -181,11 +195,51 @@ class Thresholds(Contract):
         return self
 
 
+class PlantType(str, Enum):
+    """Moisture needs differ by category; per-species thresholds aren't publicly available."""
+
+    succulent = "succulent"
+    plant = "plant"
+    tree = "tree"
+
+
+Username = Annotated[str, Field(pattern=r"^[A-Za-z0-9_.-]{2,32}$")]
+
+
+# Relative-moisture bands per plant type: (dry_enter, dry_exit, soggy_exit, soggy_enter).
+TYPE_MOISTURE = {
+    PlantType.succulent: (15, 22, 60, 70),
+    PlantType.plant: (30, 40, 80, 90),
+    PlantType.tree: (25, 35, 85, 92),
+}
+
+
 class PlantProfile(Contract):
     plant_id: PlantID = "plant-1"
     name: str = "Sprout"
     species: str = "pothos"
     thresholds: Thresholds = Field(default_factory=Thresholds)
+    username: Username | None = None  # set when a kid registers this plant
+    plant_type: PlantType = PlantType.plant
+    timezone: str = "America/Detroit"
+
+    def for_registration(self, registration: "PlantRegistration") -> "PlantProfile":
+        """This profile adopted by a registered plant: its name, type and moisture bands."""
+        dry_enter, dry_exit, soggy_exit, soggy_enter = TYPE_MOISTURE[registration.plant_type]
+        thresholds = self.thresholds.model_copy(
+            update=dict(
+                dry_enter=dry_enter, dry_exit=dry_exit, soggy_exit=soggy_exit, soggy_enter=soggy_enter
+            )
+        )
+        return self.model_copy(
+            update=dict(
+                name=registration.plant_name,
+                species=registration.plant_type.value,
+                plant_type=registration.plant_type,
+                username=registration.username,
+                thresholds=Thresholds.model_validate(thresholds.model_dump()),
+            )
+        )
 
 
 class PlantState(Contract):
@@ -223,6 +277,7 @@ class ConversationContext(Contract):
     profile: PlantProfile
     state: PlantState
     recent_events: list[PlantEvent]
+    hourly: list["HourlyReading"] = Field(default_factory=list, description="care log, oldest first")
     guidance: str = "Use event_id to deduplicate speech. Observations are not diagnoses."
 
 
@@ -237,17 +292,6 @@ class StreamMessage(Contract):
 # ===================================================================
 
 
-class PlantType(str, Enum):
-    """Moisture needs differ by category; per-species thresholds aren't publicly available."""
-
-    succulent = "succulent"
-    plant = "plant"
-    tree = "tree"
-
-
-Username = Annotated[str, Field(pattern=r"^[A-Za-z0-9_.-]{2,32}$")]
-
-
 class PlantRegistration(Contract):
     """One row per kid and plant. No login: the username is the identity."""
 
@@ -259,8 +303,9 @@ class PlantRegistration(Contract):
 
 
 class HourlyReading(Contract):
-    """One row per plant per hour. mood is ASI's label for the hour; day_mood is set only
-    on the last row of each day, by the nightly job, and feeds the leaderboard."""
+    """One row per plant per logging interval (an hour normally; a minute in demos).
+    `hour` is the interval's start. mood is ASI's label for it; day_mood is set only on
+    the last row of each day, by the nightly job, and feeds the leaderboard."""
 
     username: Username
     hour: AwareDatetime
@@ -273,8 +318,8 @@ class HourlyReading(Contract):
 
     @field_validator("hour")
     @classmethod
-    def whole_hour(cls, value):
-        return value.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    def whole_minute(cls, value):
+        return value.astimezone(timezone.utc).replace(second=0, microsecond=0)
 
 
 class LeaderboardEntry(Contract):
@@ -302,6 +347,7 @@ class UIPlantState(BaseModel):
     light_pct: Optional[float] = None
     # None: the camera has no recent look at the leaves. []: it looked and saw nothing wrong.
     leaf_issues: list[str] | None = None
+    looks: str | None = None  # the vision model's latest description, if under 2 hours old
     ts: float = Field(default_factory=now)
     sensor_health: Status = Status.missing
     light_unit: Literal["lux", "raw"] | None = None
@@ -338,3 +384,6 @@ class SpeechAudio(BaseModel):
     mime: str = "audio/mpeg"
     cached: bool = False
     ts: float = Field(default_factory=now)
+
+
+ConversationContext.model_rebuild()

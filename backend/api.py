@@ -2,6 +2,7 @@
 
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import date
 from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket
@@ -14,7 +15,7 @@ from backend.sensors.simulator import SCENARIOS, scenario_reading
 from backend.service import PlantService
 from backend.transport import QUEUE_SIZE, accept_viewer, bearer, serve
 from backend.ui import install_ui
-from shared.contracts import LeafObservation, SensorReading, StreamMessage, TouchObservation
+from shared.contracts import LeafObservation, SensorReading, StreamMessage, TouchObservation, utcnow
 
 
 class DemoRequest(BaseModel):
@@ -133,6 +134,34 @@ def create_app(settings=None):
             await serve(ws, queue)
         finally:
             service.subscribers.discard(queue)
+
+    @app.get("/api/v1/care-log", dependencies=viewer)
+    async def care_log():
+        return {"username": service.care.username, "items": list(service.care.recent)}
+
+    @app.post("/api/v1/care-log/log-now", dependencies=ingestion)
+    async def log_now():
+        row = await service.care.log_now()
+        if row is None:
+            raise HTTPException(409, "Register the plant first")
+        return row
+
+    @app.post("/api/v1/care-log/label-day", dependencies=ingestion)
+    async def label_day(day: date | None = None):
+        mood = await service.care.label_day(day)
+        if mood is None:
+            raise HTTPException(409, "No registered plant or no rows for that day")
+        return {"day": day or utcnow().astimezone(service.care.zone).date(), "day_mood": mood}
+
+    @app.get("/api/leaderboard", dependencies=viewer)
+    async def leaderboard(limit: int = Query(20, ge=1, le=100)):
+        if service.store.engine is None:
+            raise HTTPException(503, "The leaderboard needs DATABASE_URL")
+        try:
+            entries = await asyncio.to_thread(service.store.leaderboard, utcnow(), limit)
+        except Exception:
+            raise HTTPException(503, "The leaderboard is unavailable right now") from None
+        return {"days": 7, "you": service.care.username, "entries": entries}
 
     @app.post("/api/v1/demo/scenario", dependencies=ingestion)
     async def demo(request: DemoRequest):

@@ -21,6 +21,7 @@ from shared.contracts import (
     ChildUtterance,
     ListenRequest,
     PlantEvent,
+    PlantRegistration,
     PlantState,
     Status,
     UIPlantState,
@@ -74,7 +75,8 @@ class UIHub:
         self.silent_until = 0
 
     def view(self, state, message=None):
-        return to_ui(state, self.settings, message, self.service.engine.t.leaf_stale_seconds)
+        view = to_ui(state, self.settings, message, self.service.engine.t.leaf_stale_seconds)
+        return view.model_copy(update={"looks": self.service.care.latest_looks()})
 
     async def start(self):
         self.service.subscribers.add(self.queue)
@@ -155,6 +157,7 @@ class UIHub:
             utterance,
             history,
             replies.Plant(profile.name, profile.species),
+            list(self.service.care.recent),
         )
         self.show(self.service.engine.state, reply.text)
         self.say(reply.text)
@@ -177,14 +180,36 @@ def install_ui(app, service, settings, viewer):
     @router.get("/api/health", dependencies=viewer)
     async def health():
         profile = service.engine.profile
+        registration = service.registration
         return {
             "stt": stt.is_available(),
             "tts": tts.is_available(),
             "llm": replies.is_available(),
             "plant": {"name": profile.name, "species": profile.species},
+            "registered": registration is not None,
+            "username": registration.username if registration else None,
+            "database": service.store.engine is not None,
+            "thresholds": {"dry": profile.thresholds.dry_enter, "soggy": profile.thresholds.soggy_enter},
             "quick_questions": QUICK_QUESTIONS,
             "touch_listen_seconds": settings.touch_listen_seconds,
+            "demo_mode": settings.demo_mode,
         }
+
+    @router.get("/api/plant", dependencies=viewer)
+    async def get_plant():
+        if service.registration is None:
+            raise HTTPException(404, "No plant registered yet")
+        return service.registration
+
+    @router.post("/api/plant", dependencies=viewer)
+    async def register(registration: PlantRegistration):
+        try:
+            saved = await service.register(registration)
+        except Exception:
+            log.warning("Plant registration could not be saved", exc_info=True)
+            raise HTTPException(503, "Couldn't save the plant right now; please try again.") from None
+        hub.show(service.engine.state, f"Hi {registration.username}! I'm {registration.plant_name}.")
+        return saved
 
     @router.post("/api/stt", dependencies=viewer)
     async def transcribe(request: Request):

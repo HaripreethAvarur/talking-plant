@@ -5,12 +5,14 @@ from collections import OrderedDict, deque
 from backend.agent.fetch_adapter import FetchAdapter
 from backend.agent.mood import MoodEngine
 from backend.agent.touch import TouchGate
+from backend.care_log import CareLog
 from backend.database.store import Store
 from backend.transport import offer
 from shared.contracts import (
     ConversationContext,
     PlantEvent,
     PlantProfile,
+    PlantRegistration,
     SensorReading,
     StreamMessage,
     TouchObservation,
@@ -51,6 +53,8 @@ class PlantService:
         self.task = None
         self.demo_task = None
         self.stopping = asyncio.Event()
+        self.registration = None  # the kid's PlantRegistration, once signed up
+        self.care = CareLog(self, settings)
 
     async def start(self):
         try:
@@ -75,6 +79,12 @@ class PlantService:
                         )
         except Exception:
             self.db_status = "unavailable"
+        if self.engine.profile.username and self.db_status == "ok":
+            with contextlib.suppress(Exception):
+                self.registration = await asyncio.to_thread(
+                    self.store.get_plant, self.engine.profile.username
+                )
+        await self.care.start()
         # Mark restored old measurements stale before the first snapshot.
         self._commit(None, self.engine.tick(utcnow()))
         await self.fetch.start()
@@ -223,15 +233,31 @@ class PlantService:
         rows = sorted(self.history, key=lambda r: (r["timestamp"], r["event_id"]), reverse=True)
         return rows[offset : offset + limit], "bounded_memory"
 
+    async def register(self, registration: PlantRegistration):
+        """Adopt a kid's plant: save it, and switch to its name and plant-type thresholds."""
+        profile = self.engine.profile.for_registration(registration)
+        if self.store.engine is not None:
+            await asyncio.to_thread(self.store.start, self.engine.profile)
+            await asyncio.to_thread(self.store.upsert_plant, registration)
+            await asyncio.to_thread(self.store.update_profile, profile)
+            self.db_status = "ok"
+        async with self.lock:
+            self.engine.adopt(profile)
+            self.registration = registration
+        await self.care.reload()
+        return registration
+
     def context(self):
         return ConversationContext(
             plant_id=self.engine.profile.plant_id,
             profile=self.engine.profile,
             state=self.engine.state,
             recent_events=list(self.events)[-20:],
+            hourly=list(self.care.recent),
         )
 
     async def close(self):
+        await self.care.close()
         for task in (self.demo_task, self.task):
             if task:
                 task.cancel()

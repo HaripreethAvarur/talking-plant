@@ -3,6 +3,7 @@
 from collections import deque
 from datetime import datetime, timedelta
 from statistics import median
+from zoneinfo import ZoneInfo
 
 from backend.conversation.scripted import MOOD_LINES
 from shared.contracts import (
@@ -18,8 +19,9 @@ from shared.contracts import (
     Status,
 )
 
-# Moods the plant announces on entry. Grateful is spoken by the watering event instead.
-SPOKEN_MOODS = (Mood.thirsty, Mood.too_dark, Mood.unwell)
+# Moods the plant announces on entry. Grateful is spoken by the watering event instead;
+# sleepy and happy are quiet.
+SPOKEN_MOODS = (Mood.thirsty, Mood.soggy, Mood.too_dark, Mood.unwell)
 
 
 class MoodEngine:
@@ -29,10 +31,13 @@ class MoodEngine:
         self.state = PlantState(plant_id=profile.plant_id)
         self.samples = deque(maxlen=self.t.smoothing_samples)
         self.window = deque(maxlen=3600)
+        self.zone = ZoneInfo(profile.timezone)
         self.dry = False
+        self.soggy = False
         self.dark = False
         self.unwell = False
         self.dry_candidate = None
+        self.soggy_candidate = None
         self.dark_candidate = None
         self.rise_candidate = None
         self.rise_baseline = None
@@ -63,7 +68,7 @@ class MoodEngine:
     def _reset_continuity(self):
         self.samples.clear()
         self.window.clear()
-        self.dry_candidate = self.dark_candidate = self.rise_candidate = None
+        self.dry_candidate = self.soggy_candidate = self.dark_candidate = self.rise_candidate = None
         self.rise_baseline = None
         self.rise_baseline_at = None
 
@@ -81,15 +86,29 @@ class MoodEngine:
             return target
         return current
 
+    def adopt(self, profile: PlantProfile):
+        """Switch to a new profile (e.g. after registration) without losing live state."""
+        self.profile, self.t = profile, profile.thresholds
+        self.zone = ZoneInfo(profile.timezone)
+
+    def is_night(self, at):
+        hour = at.astimezone(self.zone).hour
+        start, end = self.t.night_start_hour, self.t.night_end_hour
+        return (hour >= start or hour < end) if start > end else start <= hour < end
+
     def _mood(self, at, source=Source.backend, observation_id=None):
         if self.grateful_until and at < self.grateful_until:
             mood, reason = Mood.grateful, "Sustained moisture rise indicates watering."
         elif self.dry:
             mood, reason = Mood.thirsty, "Calibrated relative moisture stayed below the dry threshold."
+        elif self.soggy:
+            mood, reason = Mood.soggy, "Relative moisture stayed above the soggy threshold."
         elif self.unwell:
             mood, reason = Mood.unwell, "Repeated leaf color observations exceeded the configured threshold."
+        elif self.dark and self.is_night(at):
+            mood, reason = Mood.sleepy, "Dark at night is normal; the plant is resting."
         elif self.dark:
-            mood, reason = Mood.too_dark, "Ambient light stayed below the threshold in matching units."
+            mood, reason = Mood.too_dark, "Ambient light stayed below the threshold during the day."
         else:
             mood, reason = Mood.happy, "No sustained care condition is currently active."
         if mood == self.state.mood:
@@ -160,6 +179,16 @@ class MoodEngine:
             self.state.smoothed_moisture_percent = value
             self.dry = self._debounce(
                 value, self.dry, self.t.dry_enter, self.t.dry_exit, "dry_candidate", self.t.dry_seconds, at
+            )
+            # Same debounce, mirrored: soggy enters at or above soggy_enter.
+            self.soggy = self._debounce(
+                -value,
+                self.soggy,
+                -self.t.soggy_enter,
+                -self.t.soggy_exit,
+                "soggy_candidate",
+                self.t.soggy_seconds,
+                at,
             )
             cooling = (
                 self.last_watering and (at - self.last_watering).total_seconds() < self.t.watering_cooldown
@@ -268,6 +297,7 @@ class MoodEngine:
         return {
             "state": self.state.model_dump(mode="json"),
             "dry": self.dry,
+            "soggy": self.soggy,
             "dark": self.dark,
             "unwell": self.unwell,
             "armed": self.armed,
@@ -281,6 +311,7 @@ class MoodEngine:
         self.state = PlantState.model_validate(data["state"])
         for name in ("dry", "dark", "unwell", "armed"):
             setattr(self, name, data[name])
+        self.soggy = data.get("soggy", False)  # absent in checkpoints from before soggy existed
         for name in ("last_watering", "grateful_until", "last_leaf_ok_at"):
             setattr(self, name, datetime.fromisoformat(data[name]) if data.get(name) else None)
         self.last_speech = {k: datetime.fromisoformat(v) for k, v in data["last_speech"].items()}

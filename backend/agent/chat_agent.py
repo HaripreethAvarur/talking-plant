@@ -11,7 +11,7 @@ First run: open the "Agent inspector" link it prints, choose Connect -> Mailbox 
 sign in to Agentverse. Then "Chat with Agent" on Agentverse opens it in ASI:One.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import httpx
@@ -19,7 +19,7 @@ import httpx
 from backend.config import get_settings
 from backend.conversation import replies
 from backend.ui import to_ui
-from shared.contracts import ChildUtterance, ConversationContext
+from shared.contracts import ChildUtterance, ConversationContext, utcnow
 
 OFFLINE_LINE = "I can't feel my roots right now. My plant computer seems to be asleep. Please try again soon!"
 
@@ -40,11 +40,14 @@ async def answer(text: str) -> str:
     except (httpx.HTTPError, ValueError):
         return OFFLINE_LINE
     view = to_ui(context.state, settings, leaf_stale_seconds=context.profile.thresholds.leaf_stale_seconds)
+    fresh = [row for row in context.hourly if row.health and utcnow() - row.hour <= timedelta(hours=2)]
+    view = view.model_copy(update={"looks": fresh[-1].health if fresh else None})
     reply = await replies.reply(
         view,
         ChildUtterance(text=text[:4000], source="typed"),
         [event.reason for event in context.recent_events],
         replies.Plant(context.profile.name, context.profile.species),
+        context.hourly,
     )
     return reply.text
 
