@@ -68,6 +68,18 @@ class ColorBaseline:
         )
 
 
+def white_balance(image, min_gain=0.5, max_gain=2.5):
+    """Grey-world correction over the whole frame. Warm room light otherwise makes green
+    leaves read as yellow and the pot, table and wall as brown. Gains are capped, so a
+    yellow card held up to the camera stays yellow."""
+    import numpy as np
+
+    pixels = image.astype(np.float32)
+    means = np.maximum(pixels.reshape(-1, 3).mean(axis=0), 1)
+    gains = np.clip(means.mean() / means, min_gain, max_gain)
+    return np.clip(pixels * gains, 0, 255).astype(np.uint8)
+
+
 def capture(image_path=None, camera_index=0, region=None, plant_id="plant-1"):
     source = Source.image_file if image_path else Source.hardware
     try:
@@ -94,6 +106,7 @@ def capture(image_path=None, camera_index=0, region=None, plant_id="plant-1"):
                     return unavailable(plant_id, source, "Camera opened but returned no frame.")
             finally:
                 camera.release()
+            image = white_balance(image)
         return ColorBaseline().observe(image, region, plant_id, source)
     except Exception as exc:
         return unavailable(plant_id, source, f"Capture/analysis unavailable ({type(exc).__name__}).")

@@ -6,6 +6,7 @@ import json
 import os
 from uuid import uuid4
 
+import httpx
 from dotenv import load_dotenv
 
 from backend.sensors.arduino_adapter import DEVICE_ID, ArduinoSerialAdapter, HubFrameDecoder
@@ -22,6 +23,24 @@ async def send(client, observation):
         else "/api/v1/sensor-readings"
     )
     report(await publish(client, path, observation))
+
+
+async def sync_mood(client, adapter, plant_id, last_error=None):
+    """Send the backend's current mood to the hub so its LED follows every mood source
+    (sensors, camera, demo controls). write_mood only writes when the mood changes.
+    Returns the error text, so a repeated failure is printed once."""
+    token = os.getenv("VIEWER_TOKEN", "")
+    headers = {"Authorization": f"Bearer {token}"} if token else None
+    try:
+        response = await client.get(f"/api/v1/plants/{plant_id}/state", headers=headers)
+        response.raise_for_status()
+        await asyncio.to_thread(adapter.write_mood, response.json()["mood"])
+    except (httpx.HTTPError, KeyError, ValueError, OSError) as exc:
+        error = f"{type(exc).__name__}: {exc}"
+        if error != last_error:
+            print(f"Mood not sent to the Arduino LED ({error})", flush=True)
+        return error
+    return None
 
 
 def simulated_frame(step):
@@ -55,6 +74,7 @@ async def run(client, args):
     )
     adapter = ArduinoSerialAdapter(args.port, args.plant_id, calibration, args.baud)
     step = 0
+    mood_error = None
     try:
         while not args.count or step < args.count:
             try:
@@ -72,6 +92,7 @@ async def run(client, args):
             for observation in observations:
                 await send(client, observation)
             if observations:
+                mood_error = await sync_mood(client, adapter, args.plant_id, mood_error)
                 step += 1
     finally:
         await asyncio.to_thread(adapter.cleanup)

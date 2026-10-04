@@ -168,6 +168,7 @@ def test_real_serial_partial_line_over_pseudoterminal():
 
     def board():
         payload = (frame() + "\n").encode()
+        time.sleep(0.3)  # like a real board, send after the adapter has opened and flushed the port
         os.write(master, b"booting...\n")  # banners are ignored
         os.write(master, payload[:20])
         time.sleep(0.15)  # Span pyserial's read timeout, keeping the partial line.
@@ -189,3 +190,42 @@ def test_real_serial_partial_line_over_pseudoterminal():
         thread.join(5)
         os.close(master)
         os.close(slave)
+
+
+async def test_sync_mood_sends_backend_mood_to_hub_led():
+    import httpx
+
+    from backend.sensors.arduino import sync_mood
+
+    class Hub:
+        moods = []
+
+        def write_mood(self, mood, text=""):
+            self.moods.append(mood)
+
+    moods = iter(["thirsty", "too_dark"])
+
+    def handler(request):
+        assert request.url.path == "/api/v1/plants/plant-1/state"
+        return httpx.Response(200, json={"mood": next(moods)})
+
+    hub = Hub()
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://localhost"
+    ) as client:
+        assert await sync_mood(client, hub, "plant-1") is None
+        assert await sync_mood(client, hub, "plant-1") is None
+    assert hub.moods == ["thirsty", "too_dark"]
+
+
+async def test_sync_mood_reports_a_repeated_failure_once(capsys):
+    import httpx
+
+    from backend.sensors.arduino import sync_mood
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(401)), base_url="http://localhost"
+    ) as client:
+        error = await sync_mood(client, None, "plant-1")
+        assert error and await sync_mood(client, None, "plant-1", error) == error
+    assert capsys.readouterr().out.count("Mood not sent") == 1

@@ -7,7 +7,7 @@ carry suggested_text, opens the microphone on a touch, and answers questions.
 import asyncio
 import contextlib
 import logging
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket
@@ -15,7 +15,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 from backend import air
+from backend.agent.mood import probe_out
 from backend.conversation import replies
+from backend.conversation.facts import EVENT_MOMENTS, FactPicker, moment
 from backend.conversation.scripted import GREETING_LINE, QUICK_QUESTIONS
 from backend.speech import stt, tts
 from backend.transport import QUEUE_SIZE, accept_viewer, offer, serve
@@ -66,6 +68,12 @@ def to_ui(state, settings, message=None, leaf_stale_seconds=300):
     )
 
 
+RISE_WINDOW_SECONDS = 180
+CONVERSATION_GAP_SECONDS = 180
+FACT_GAP_SECONDS = 90
+RISE_MIN_POINTS = 5
+
+
 class UIHub:
     def __init__(self, service, settings):
         self.service, self.settings = service, settings
@@ -74,6 +82,11 @@ class UIHub:
         self.queue = asyncio.Queue(maxsize=QUEUE_SIZE)
         self.tasks = []
         self.seen = OrderedDict()
+        self.turns = deque(maxlen=4)  # recent (question, answer) pairs, so replies don't repeat
+        self.last_turn = float("-inf")
+        self.facts = FactPicker()
+        self.last_fact = float("-inf")
+        self.water = deque(maxlen=2000)  # (loop time, moisture %) for small drinks the engine ignores
         self.silent_until = 0
         self.last_listen = float("-inf")
 
@@ -82,8 +95,16 @@ class UIHub:
         care = self.service.care
         looks = care.latest_looks()
         latest = care.recent[-1] if care.recent else None
+        engine, now = self.service.engine, utcnow()
+        sunrise = engine.next_sunrise(now)
         return view.model_copy(
             update={
+                "is_night": engine.is_night(now),
+                "outdoor_temp_f": care.weather.temp_f if care.weather else None,
+                "outdoor_humidity": care.weather.humidity if care.weather else None,
+                "weather_code": care.weather.code if care.weather else None,
+                "weather": care.weather.condition if care.weather else None,
+                "sunrise_at": sunrise.timestamp() if sunrise else None,
                 "looks": looks.health if looks else None,
                 "looks_at": looks.hour.timestamp() if looks else None,
                 "air_aqi": care.air_aqi if care.air_aqi is not None else (latest.air_aqi if latest else None),
@@ -147,6 +168,10 @@ class UIHub:
                 self.show(self.service.engine.state)
                 continue
             state = PlantState.model_validate(update["state"])
+            if probe_out(state.moisture):
+                self.water.clear()  # re-inserting the probe isn't a drink
+            elif state.moisture.relative_percent is not None:
+                self.water.append((asyncio.get_running_loop().time(), state.moisture.relative_percent))
             self.show(state)
             for data in update["events"]:
                 event = PlantEvent.model_validate(data)
@@ -162,6 +187,9 @@ class UIHub:
                 elif event.suggested_text:
                     self.show(state, event.suggested_text)
                     self.say(event.suggested_text)
+                    lesson = EVENT_MOMENTS.get("watering" if event.kind == "watering" else event.mood)
+                    if lesson and event.kind in ("watering", "mood_changed"):
+                        self.teach(state, lesson)
 
     def wake(self) -> bool:
         """The child said "Hi <plant name>": same as a pat on the touch sensor."""
@@ -171,17 +199,60 @@ class UIHub:
         self._listen(uuid4(), self.service.engine.profile.plant_id, utcnow(), self.service.engine.state)
         return True
 
+    def teach(self, state, lesson):
+        """Share a fact that fits a real moment, at most once per FACT_GAP_SECONDS."""
+        now = asyncio.get_running_loop().time()
+        if now - self.last_fact < FACT_GAP_SECONDS:
+            return
+        self.last_fact = now
+        fact = self.facts.pick(lesson, self.service.engine.profile.plant_type.value)
+        self.show(state, fact)
+        self.say(fact)
+
+    def water_rise(self, seconds=RISE_WINDOW_SECONDS, minimum=RISE_MIN_POINTS):
+        """(lowest %, current %) when moisture rose at least `minimum` points in the last
+        `seconds`; catches drinks too small to count as a watering."""
+        now = asyncio.get_running_loop().time()
+        recent = [pct for at, pct in self.water if now - at <= seconds]
+        if len(recent) < 2:
+            return None
+        lowest, current = min(recent), recent[-1]
+        return (lowest, current) if current - lowest >= minimum else None
+
     async def answer(self, utterance):
+        now = asyncio.get_running_loop().time()
+        if now - self.last_turn > CONVERSATION_GAP_SECONDS:
+            self.turns.clear()  # a quiet spell means a new child: start the conversation fresh
+        self.last_turn = now
         await self.service.tick()
         profile = self.service.engine.profile
-        history = [event.reason for event in self.service.context().recent_events]
+        events = self.service.context().recent_events
+        history = [event.reason for event in events]
+        watered = [event.timestamp for event in events if event.kind == "watering"]
+        registration = self.service.registration
+        watered_ago = (utcnow() - max(watered)).total_seconds() if watered else None
+        view = self.view(self.service.engine.state)
+        just_watered = watered_ago is not None and watered_ago <= replies.JUST_WATERED_SECONDS
+        fact = self.facts.pick(moment(view, just_watered), profile.plant_type.value)
+        plant = replies.Plant(
+            profile.name,
+            profile.species,
+            (profile.thresholds.dry_exit, profile.thresholds.soggy_exit),
+            registration.username if registration else None,
+            profile.timezone,
+            watered_ago,
+            self.water_rise(),
+            fact,
+        )
         reply = await replies.reply(
-            self.view(self.service.engine.state),
+            view,
             utterance,
             history,
-            replies.Plant(profile.name, profile.species),
+            plant,
             list(self.service.care.recent),
+            list(self.turns),
         )
+        self.turns.append((utterance.text.strip(), reply.text))
         self.show(self.service.engine.state, reply.text)
         self.say(reply.text)
 

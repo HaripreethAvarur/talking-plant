@@ -51,7 +51,8 @@ avoid repeating `--port`. Only one process can read the port at a time.
 
 ## 3. Calibrate the moisture probe
 
-The inspect command prints raw values (0–1023). Measure stable readings in your
+`python -m scripts.watch_sensors` prints one short line per second: raw moisture, the
+calibrated percentage once saved, raw light and touches. The inspect command prints raw values (0–1023). Measure stable readings in your
 chosen dry and wet soil conditions, with the same insertion depth. Save those
 actual numbers:
 
@@ -149,8 +150,9 @@ No valid frame for five seconds causes a disconnected observation and reconnect 
 A pulled analog lead can float while the board still reports numbers; check wiring
 physically.
 
-The laptop can send `{"mood":"thirsty","text":"..."}` back; the sketch lights the D4 LED
-for thirsty, too dark or unwell (`ArduinoSerialAdapter.write_mood`).
+After each frame the bridge reads the plant's mood from the backend and, when it changes,
+sends `{"mood":"thirsty","text":""}` back; the sketch lights the D4 LED for thirsty, too
+dark or unwell. Remote backends with a `VIEWER_TOKEN` need it in the bridge's `.env` too.
 
 `care_records` store `sensor`, `touch_observation`, derived `touch`, and `leaf` records
 as JSON; checkpoints preserve state and cooldowns. `/ws/plants/plant-1` exposes full

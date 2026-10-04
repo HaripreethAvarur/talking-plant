@@ -20,6 +20,15 @@ export interface PlantState {
   sensor_health?: string;
   light_value?: number | null;
   light_unit?: "raw" | "lux" | null;
+  /** Real sunrise/sunset at the plant's ZIP decide this, not the mood. */
+  is_night?: boolean | null;
+  /** The next sunrise, epoch seconds. */
+  sunrise_at?: number | null;
+  /** Outdoor weather at the plant's ZIP. */
+  outdoor_temp_f?: number | null;
+  outdoor_humidity?: number | null;
+  weather_code?: number | null;
+  weather?: string | null;
 }
 
 export interface SpeechAudio {

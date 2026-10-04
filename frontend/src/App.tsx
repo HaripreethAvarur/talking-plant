@@ -152,7 +152,7 @@ export default function App() {
 
   return (
     <div className={`app face-${face}`}>
-      <Scene face={tab === "leaderboard" ? "happy" : face} />
+      <Scene face={tab === "leaderboard" ? "happy" : face} night={state?.is_night} weatherCode={state?.weather_code} />
 
       <header className="topbar">
         <div className="brand">

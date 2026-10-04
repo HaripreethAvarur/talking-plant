@@ -155,4 +155,6 @@ def cacheable_lines() -> list[str]:
     ]
     for by_mood in _REPLIES.values():
         lines += [t for t in by_mood.values() if "{" not in t]
-    return list(dict.fromkeys(lines))
+    from backend.conversation.facts import all_facts
+
+    return list(dict.fromkeys(lines + all_facts()))

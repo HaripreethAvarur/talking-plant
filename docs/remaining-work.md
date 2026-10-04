@@ -38,8 +38,6 @@ Follow [Arduino setup](arduino-setup.md):
 
 ## Not done
 
-- The hub sketch can light an LED for unhappy moods (`ArduinoSerialAdapter.write_mood`),
-  but the bridge doesn't send moods to it yet.
 - Night is a fixed window (21:00–07:00 local, set in the profile), not real sunset times.
 - Without `DATABASE_URL`, a registration lasts only until the backend restarts.
 

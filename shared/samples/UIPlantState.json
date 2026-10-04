@@ -12,5 +12,11 @@
   "ts": 1790942400.0,
   "sensor_health": "ok",
   "light_unit": "raw",
-  "light_value": 600.0
+  "light_value": 600.0,
+  "is_night": null,
+  "sunrise_at": null,
+  "outdoor_temp_f": null,
+  "outdoor_humidity": null,
+  "weather_code": null,
+  "weather": null
 }

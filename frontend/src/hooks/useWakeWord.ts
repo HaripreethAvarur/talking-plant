@@ -1,12 +1,46 @@
 import { useEffect, useRef, useState } from "react";
 
-const GREETINGS = "hey|hi|hello|hiya|yo|howdy|okay|ok|hey there|hi there";
+const GREETINGS = new Set(["hey", "hi", "hello", "hiya", "yo", "howdy", "okay", "ok", "high", "hay", "hei"]);
 
-/** Words a child might call the plant: its full name and each longer word in it. */
-export function wakePattern(name: string): RegExp {
-  const words = name.toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean);
-  const names = [words.join("\\s+"), ...words.filter((w) => w.length >= 3)].filter(Boolean);
-  return new RegExp(`\\b(${GREETINGS})\\b[\\s,!.]*(${names.join("|")})\\b`, "i");
+function words(text: string): string[] {
+  return text.toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean);
+}
+
+function distance(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let previous = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const current = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+      previous = current;
+    }
+  }
+  return row[b.length];
+}
+
+/** Speech recognition often mishears names ("Jack Sparrow", "cap's barrow"): short name
+ * words must match exactly, longer ones may be off by two letters. */
+function soundsLike(heard: string, nameWord: string): boolean {
+  if (heard === nameWord) return true;
+  return nameWord.length >= 5 && heard.length >= 4 && distance(heard, nameWord) <= 2;
+}
+
+/** True for "Hi <name>" (a greeting, then a name word within three words) or the full name alone. */
+export function heardWake(heard: string, name: string): boolean {
+  const said = words(heard);
+  const nameWords = words(name).filter((w) => w.length >= 3);
+  if (!nameWords.length) return false;
+  for (let i = 0; i < said.length; i++) {
+    if (GREETINGS.has(said[i]) && said.slice(i + 1, i + 4).some((w) => nameWords.some((n) => soundsLike(w, n)))) {
+      return true;
+    }
+    if (nameWords.length > 1 && nameWords.every((n, k) => said[i + k] !== undefined && soundsLike(said[i + k], n))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 type Recognition = {
@@ -36,7 +70,6 @@ export function useWakeWord(name: string, enabled: boolean, onWake: () => void) 
 
   useEffect(() => {
     if (!supported || !enabled || blocked || !name) return;
-    const pattern = wakePattern(name);
     const recognition = new (Ctor as new () => Recognition)();
     recognition.continuous = true;
     recognition.interimResults = true;
@@ -46,7 +79,7 @@ export function useWakeWord(name: string, enabled: boolean, onWake: () => void) 
     recognition.onresult = (event) => {
       let heard = "";
       for (let i = event.resultIndex; i < event.results.length; i++) heard += ` ${event.results[i][0].transcript}`;
-      if (!fired && pattern.test(heard)) {
+      if (!fired && heardWake(heard, name)) {
         fired = true;
         onWakeRef.current();
         recognition.abort(); // start fresh so the same words don't fire twice

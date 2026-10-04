@@ -120,3 +120,25 @@ def test_restart_preserves_episode_and_cooldown(reading):
     restored.restore(engine.checkpoint())
     events = [e for step in range(12, 24) for e in feed(restored, reading(step))]
     assert not any(e.kind == "watering" for e in events)
+
+
+def test_pulling_the_probe_out_and_back_in_is_not_watering(reading):
+    from backend.sensors.calibration import Calibration
+
+    calibration = Calibration(dry_raw=400, wet_raw=950, sensor_model="t", device_id="arduino-plant-1")
+
+    def raw_reading(step, raw):
+        row = reading(step, "dry")
+        row.moisture = calibration.convert(raw)
+        return row
+
+    engine = MoodEngine(PlantProfile())
+    events = [e for step in range(8) for e in feed(engine, raw_reading(step, 640))]  # moist soil, ~44%
+    events += [e for step in range(8, 20) for e in feed(engine, raw_reading(step, 5))]  # probe in the air
+    events += [e for step in range(20, 32) for e in feed(engine, raw_reading(step, 640))]  # pushed back in
+    assert not any(e.kind == "watering" for e in events)
+    assert not any(e.suggested_text == MOOD_LINES[Mood.grateful] for e in events)
+    # A real pour from dry soil is still thanked.
+    events = [e for step in range(32, 44) for e in feed(engine, raw_reading(step, 420))]
+    events += [e for step in range(44, 60) for e in feed(engine, raw_reading(step, 700))]
+    assert sum(e.kind == "watering" for e in events) == 1

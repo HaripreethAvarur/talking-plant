@@ -525,6 +525,7 @@ h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: 0.01em; }
 .scene-unwell { background: linear-gradient(180deg, #8fb8a3 0%, #c7e0cc 62%, #e7f2e5 100%); }
 .scene-offline { background: linear-gradient(180deg, #a7b0bb 0%, #d0d6dc 62%, #e8ebee 100%); }
 .scene-grateful { background: linear-gradient(180deg, #46c4ff 0%, #b2ecff 62%, #e6fbff 100%); }
+.scene.scene-night { background: linear-gradient(180deg, #0f1340 0%, #252b6e 60%, #3d4492 100%); }
 
 .hills { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 34vh; }
 .hill-back { fill: #65c94a; stroke: var(--ink); stroke-width: 4; transition: fill 1.2s; }
@@ -535,6 +536,8 @@ h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: 0.01em; }
 .scene-soggy .hill-front { fill: #6db98f; }
 .scene-too_dark .hill-back, .scene-sleepy .hill-back { fill: #24563a; }
 .scene-too_dark .hill-front, .scene-sleepy .hill-front { fill: #2f6e48; }
+.scene-night .hill-back { fill: #24563a; }
+.scene-night .hill-front { fill: #2f6e48; }
 .scene-unwell .hill-back { fill: #8fb46b; }
 .scene-unwell .hill-front { fill: #a9c97f; }
 .scene-offline .hill-back { fill: #9aa69b; }
@@ -591,7 +594,7 @@ h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: 0.01em; }
 .cloud-1 { top: 15vh; animation-delay: -12s; }
 .cloud-2 { top: 27vh; scale: 0.75; animation-duration: 85s; animation-delay: -50s; }
 .cloud-3 { top: 8vh; scale: 0.6; animation-duration: 110s; animation-delay: -80s; }
-.scene-sleepy .cloud, .scene-too_dark .cloud { opacity: 0.25; }
+.scene-sleepy .cloud, .scene-too_dark .cloud, .scene-night .cloud { opacity: 0.25; }
 .cloud-rain path { fill: #c3d0de; }
 .scene-soggy .cloud-1 { top: 9vh; scale: 1.5; animation-duration: 140s; }
 .scene-soggy .cloud-2 { top: 13vh; scale: 1.2; animation-duration: 160s; animation-delay: -70s; }
@@ -900,3 +903,5 @@ h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: 0.01em; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+.outside-line { margin: 2px 0 8px; font-weight: 600; text-transform: capitalize; opacity: 0.8; font-size: 0.95rem; }

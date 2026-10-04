@@ -40,6 +40,18 @@ _PROBLEM_WORDS = {
 }
 
 
+# A sentence about the air or weather ("the air outside is dry") isn't the plant saying it's
+# thirsty, unless it also talks about the plant itself ("...but my soil feels dry").
+_WEATHER = re.compile(r"\b(air|weather|outside|humid|humidity)\b", re.IGNORECASE)
+_SELF = re.compile(r"\b(my|me|i|i'm|soil|roots?|leaves|pot)\b", re.IGNORECASE)
+
+
+def _without_weather_talk(text: str) -> str:
+    return " ".join(
+        s for s in re.split(r"(?<=[.!?])\s+", text) if not (_WEATHER.search(s) and not _SELF.search(s))
+    )
+
+
 def question_is_unsafe(question: str) -> bool:
     return bool(_BLOCKED.search(question) or _PERSONAL_INFO.search(question))
 
@@ -63,11 +75,27 @@ def _real_problems(state: PlantState) -> set[str]:
     return problems
 
 
+_LEAD_IN = re.compile(r"^(did you know|guess what|you know what|fun fact)\W*$", re.IGNORECASE)
+
+
+def sentences(text: str) -> list[str]:
+    """Split into sentences; a lead-in like "Did you know?" belongs to the sentence after it."""
+    parts = [part.strip() for part in re.findall(r"[^.!?]+[.!?]+|[^.!?]+$", text) if part.strip()]
+    merged: list[str] = []
+    for part in parts:
+        if merged and _LEAD_IN.match(merged[-1]):
+            merged[-1] = f"{merged[-1]} {part}"
+        else:
+            merged.append(part)
+    return merged
+
+
 def _sentence_count(text: str) -> int:
-    return len([s for s in re.split(r"[.!?]+", text) if s.strip()])
+    return len(sentences(text))
 
 
-def check_reply(reply: str, state: PlantState) -> str | None:
+def check_reply(reply: str, state: PlantState, allowed_numbers=()) -> str | None:
+    """allowed_numbers: extra percentages the facts gave the model (e.g. "15% more water")."""
     if not reply.strip():
         return "empty"
     if _BLOCKED.search(reply):
@@ -77,8 +105,8 @@ def check_reply(reply: str, state: PlantState) -> str | None:
     if _sentence_count(reply) > MAX_SENTENCES or len(reply.split()) > MAX_WORDS:
         return "too long"
 
-    # Grounding: any percentage quoted must match a real reading.
-    readings = [v for v in (state.moisture_pct, state.light_pct) if v is not None]
+    # Grounding: any percentage quoted must match a real reading or a number from the facts.
+    readings = [v for v in (state.moisture_pct, state.light_pct, *allowed_numbers) if v is not None]
     for match in _PERCENT.finditer(reply):
         value = int(match.group(1))
         if not any(abs(value - r) <= PERCENT_TOLERANCE for r in readings):
@@ -87,6 +115,7 @@ def check_reply(reply: str, state: PlantState) -> str | None:
     # Grounding: never complain about a problem the sensors and camera don't show.
     real = _real_problems(state)
     for problem, pattern in _PROBLEM_WORDS.items():
-        if problem not in real and pattern.search(reply):
+        text = _without_weather_talk(reply) if problem == "thirsty" else reply
+        if problem not in real and pattern.search(text):
             return f"invented problem '{problem}'"
     return None

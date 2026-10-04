@@ -24,6 +24,15 @@ from shared.contracts import (
 SPOKEN_MOODS = (Mood.thirsty, Mood.soggy, Mood.too_dark, Mood.unwell)
 
 
+# A Grove moisture probe reads near 0 in air and a few hundred in even dry soil (~400 here).
+PROBE_OUT_RAW = 100
+
+
+def probe_out(moisture) -> bool:
+    """True when the raw reading says the probe is out of the soil."""
+    return moisture.raw is not None and moisture.raw < PROBE_OUT_RAW
+
+
 class MoodEngine:
     def __init__(self, profile: PlantProfile):
         self.profile = profile
@@ -32,6 +41,7 @@ class MoodEngine:
         self.samples = deque(maxlen=self.t.smoothing_samples)
         self.window = deque(maxlen=3600)
         self.zone = ZoneInfo(profile.timezone)
+        self.daylight = None  # (sunrise, sunset) at the plant's ZIP; None: use the profile's night hours
         self.dry = False
         self.soggy = False
         self.dark = False
@@ -92,9 +102,23 @@ class MoodEngine:
         self.zone = ZoneInfo(profile.timezone)
 
     def is_night(self, at):
+        if self.daylight:
+            # Sun times move a minute or two a day, so today's clock times serve any day.
+            sunrise, sunset = self.daylight
+            local = at.astimezone(sunrise.tzinfo).time()
+            return local < sunrise.time() or local >= sunset.time()
         hour = at.astimezone(self.zone).hour
         start, end = self.t.night_start_hour, self.t.night_end_hour
         return (hour >= start or hour < end) if start > end else start <= hour < end
+
+    def next_sunrise(self, at):
+        """The next sunrise after `at`, or None without sun times."""
+        if not self.daylight:
+            return None
+        sunrise = self.daylight[0]
+        local = at.astimezone(sunrise.tzinfo)
+        candidate = local.replace(hour=sunrise.hour, minute=sunrise.minute, second=0, microsecond=0)
+        return candidate if candidate > local else candidate + timedelta(days=1)
 
     def _mood(self, at, source=Source.backend, observation_id=None):
         if self.grateful_until and at < self.grateful_until:
@@ -173,7 +197,11 @@ class MoodEngine:
                 )
             )
         watered = False
-        if reading.moisture.status == Status.ok:
+        if reading.moisture.status == Status.ok and probe_out(reading.moisture):
+            # Out of the soil: pause, so pushing it back in can't look like a watering.
+            self._reset_continuity()
+            self.state.smoothed_moisture_percent = None
+        elif reading.moisture.status == Status.ok:
             self.samples.append(reading.moisture.relative_percent)
             value = median(self.samples)
             self.state.smoothed_moisture_percent = value

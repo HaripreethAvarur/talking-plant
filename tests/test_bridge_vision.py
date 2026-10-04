@@ -80,3 +80,20 @@ def test_color_region_and_unusable_images(tmp_path):
     assert capture(image_path=path, region=(0, 0, 100, 100)).yellow_proportion == 1
     assert ColorBaseline().observe(image, (99, 99, 100, 100)).status == Status.error
     assert ColorBaseline().observe(np.zeros_like(image), (0, 0, 100, 100)).status == Status.error
+
+
+def test_white_balance_undoes_warm_light_but_keeps_a_yellow_card():
+    import numpy as np
+
+    from backend.vision.observe import white_balance
+
+    frame = np.zeros((100, 200, 3), np.uint8)
+    frame[:, :100] = (35, 110, 120)  # green leaf under orange light: reads as yellow (BGR)
+    frame[:, 100:] = (40, 60, 90)  # warm grey table: reads as brown
+    leaf = (0, 0, 100, 100)
+    assert ColorBaseline().observe(frame, leaf).yellow_proportion > 0.9
+    balanced = white_balance(frame)
+    assert ColorBaseline().observe(balanced, leaf).yellow_proportion < 0.1
+    assert ColorBaseline().observe(balanced, (100, 0, 100, 100)).brown_proportion < 0.1
+    frame[:, :100] = (40, 200, 230)  # a yellow card stays yellow
+    assert ColorBaseline().observe(white_balance(frame), leaf).yellow_proportion > 0.9

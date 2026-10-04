@@ -356,6 +356,14 @@ class UIPlantState(BaseModel):
     sensor_health: Status = Status.missing
     light_unit: Literal["lux", "raw"] | None = None
     light_value: float | None = None
+    # From real sunrise/sunset at the plant's ZIP (else the profile's night hours), not the mood.
+    is_night: bool | None = None
+    sunrise_at: float | None = None  # the next sunrise (epoch seconds), when sun times are known
+    # Outdoor weather at the plant's ZIP (Open-Meteo), refreshed every 15 minutes.
+    outdoor_temp_f: float | None = None
+    outdoor_humidity: float | None = None  # relative humidity, %
+    weather_code: int | None = None  # WMO weather code
+    weather: str | None = None  # e.g. "partly cloudy", "rainy"
 
 
 class ListenRequest(Contract):

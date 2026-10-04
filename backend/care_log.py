@@ -35,6 +35,7 @@ class CareLog:
         self.labelled_day: date | None = None
         self.lock = asyncio.Lock()
         self.air_aqi: float | None = None  # refreshed at every checkup, before the slower photo
+        self.weather = None  # air.Weather at the plant's ZIP, refreshed every 15 minutes
         self.on_change = None  # called after new data, e.g. to refresh the UI
 
     @property
@@ -161,6 +162,15 @@ class CareLog:
         now = now or utcnow()
         if not self.username:
             return
+        # Real sunrise/sunset at the plant's ZIP (cached by air.sun_times) decide day and night.
+        location = self.service.registration.location
+        daylight = await air.sun_times(location)
+        if daylight:
+            self.service.engine.daylight = daylight
+        weather = await air.weather(location)  # cached, so this is cheap every tick
+        if weather and weather != self.weather:
+            self.weather = weather
+            self._changed()
         slot = self._slot_start(now)
         if slot != self.last_slot:
             self.last_slot = slot

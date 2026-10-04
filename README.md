@@ -49,6 +49,8 @@ URL for the shared database. Blank keeps a bounded in-memory history.
 ### Demo tips
 
 - `DEMO_MODE=true` and `LOG_INTERVAL_MINUTES=1` in `.env` make the stage run lively.
+- `make native-fast` starts the backend with a care-log row every minute without editing
+  `.env` (`make native-fast LOG_MINUTES=5` for every five); `make native` stays hourly.
 - **Shift+D** opens hidden controls: force "dry then watered", dry, healthy or dark, log
   a care row now, or label today. The 🏆 Leaderboard tab shows the weekly board.
 - `python -m scripts.kiosk` opens the UI full screen with sound and microphone allowed.

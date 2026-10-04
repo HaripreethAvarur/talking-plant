@@ -69,3 +69,26 @@ def test_plant_type_sets_the_moisture_bands():
     assert succulent.state.mood.value == "happy"  # 20% is fine for a succulent
     assert fern.state.mood.value == "thirsty"
     assert succulent.profile.username == "maya" and succulent.profile.name == "Spike"
+
+
+def test_real_sun_times_decide_night_and_next_sunrise():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from backend.agent.mood import MoodEngine
+    from shared.contracts import PlantProfile
+
+    zone = ZoneInfo("America/Detroit")
+    engine = MoodEngine(PlantProfile())
+    engine.daylight = (datetime(2026, 10, 4, 7, 35, tzinfo=zone), datetime(2026, 10, 4, 19, 10, tzinfo=zone))
+    assert engine.is_night(
+        datetime(2026, 10, 5, 19, 30, tzinfo=zone)
+    )  # after sunset, before the 21:00 default
+    assert not engine.is_night(datetime(2026, 10, 5, 7, 50, tzinfo=zone))  # after sunrise, before 07:00 + ...
+    assert engine.is_night(datetime(2026, 10, 5, 7, 20, tzinfo=zone))
+    assert engine.next_sunrise(datetime(2026, 10, 5, 2, 0, tzinfo=zone)) == datetime(
+        2026, 10, 5, 7, 35, tzinfo=zone
+    )
+    assert engine.next_sunrise(datetime(2026, 10, 5, 20, 0, tzinfo=zone)) == datetime(
+        2026, 10, 6, 7, 35, tzinfo=zone
+    )

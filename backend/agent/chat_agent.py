@@ -16,11 +16,14 @@ from uuid import uuid4
 
 import httpx
 
+from backend.agent.mood import MoodEngine
 from backend.config import get_settings
 from backend.conversation import replies
+from backend.conversation.facts import FactPicker, moment
 from backend.ui import to_ui
 from shared.contracts import ChildUtterance, ConversationContext, utcnow
 
+_facts = FactPicker()
 OFFLINE_LINE = "I can't feel my roots right now. My plant computer seems to be asleep. Please try again soon!"
 
 
@@ -39,14 +42,29 @@ async def answer(text: str) -> str:
         context = ConversationContext.model_validate(response.json())
     except (httpx.HTTPError, ValueError):
         return OFFLINE_LINE
-    view = to_ui(context.state, settings, leaf_stale_seconds=context.profile.thresholds.leaf_stale_seconds)
+    profile = context.profile
+    view = to_ui(context.state, settings, leaf_stale_seconds=profile.thresholds.leaf_stale_seconds)
     fresh = [row for row in context.hourly if row.health and utcnow() - row.hour <= timedelta(hours=2)]
-    view = view.model_copy(update={"looks": fresh[-1].health if fresh else None})
+    # The agent runs apart from the backend's sun times, so night comes from the profile's hours.
+    night = MoodEngine(profile).is_night(utcnow())
+    view = view.model_copy(update={"looks": fresh[-1].health if fresh else None, "is_night": night})
+    watered = [event.timestamp for event in context.recent_events if event.kind == "watering"]
+    watered_ago = (utcnow() - max(watered)).total_seconds() if watered else None
+    just_watered = watered_ago is not None and watered_ago <= replies.JUST_WATERED_SECONDS
     reply = await replies.reply(
         view,
         ChildUtterance(text=text[:4000], source="typed"),
         [event.reason for event in context.recent_events],
-        replies.Plant(context.profile.name, context.profile.species),
+        replies.Plant(
+            profile.name,
+            profile.species,
+            (profile.thresholds.dry_exit, profile.thresholds.soggy_exit),
+            None,  # ASI:One users aren't the registered child
+            profile.timezone,
+            watered_ago,
+            None,
+            _facts.pick(moment(view, just_watered), profile.plant_type.value),
+        ),
         context.hourly,
     )
     return reply.text

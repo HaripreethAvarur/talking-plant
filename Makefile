@@ -6,7 +6,7 @@ else
 PY = .venv/bin/python
 endif
 
-.PHONY: install install-vision install-fetch install-arduino native local neon stop mock replay arduino arduino-mock arduino-devices touch calibrate camera test lint build schemas smoke migrate lock
+.PHONY: install install-vision install-fetch install-arduino native native-fast frontend leaf agent local neon stop mock replay arduino arduino-mock arduino-devices touch calibrate camera test lint build schemas smoke migrate lock
 
 # Setup
 install:
@@ -22,6 +22,20 @@ install-arduino:
 # Backend (one process serves the API, the UI WebSocket and audio)
 native:
 	$(PY) -m backend.server
+# Same backend, but a care-log row (photo, air, ASI label) every LOG_MINUTES instead of hourly.
+LOG_MINUTES ?= 1
+native-fast:
+	LOG_INTERVAL_MINUTES=$(LOG_MINUTES) $(PY) -m backend.server
+# The React face on http://localhost:5173 (proxies /api, /ws and /audio to the backend).
+frontend:
+	npm --prefix frontend run dev
+# Webcam leaf colour check every 10 s, posted to the backend. ROI = x y width height of the leaves.
+ROI ?= 1150 450 700 550
+leaf:
+	$(PY) -m backend.vision.observe --roi $(ROI) --publish --loop --interval 10
+# Plant Care Agent for Agentverse / ASI:One chat (needs make install-fetch once).
+agent:
+	$(PY) -m backend.agent.chat_agent
 local:
 	docker compose up -d --build --wait
 neon:

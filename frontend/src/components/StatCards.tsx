@@ -1,4 +1,4 @@
-import type { Face, Mood, PlantState } from "../contracts";
+import type { Face, PlantState } from "../contracts";
 
 interface Props {
   state: PlantState | null;
@@ -31,6 +31,17 @@ function ago(epochSeconds: number | null | undefined): string {
   return `${Math.round(minutes / 60)} h ago`;
 }
 
+/** An emoji for the WMO weather code (night swaps the sun for a moon). */
+function weatherIcon(code: number | null | undefined, night: boolean): string {
+  if (code == null) return "🌡️";
+  if (code === 0 || code === 1) return night ? "🌙" : "☀️";
+  if (code === 2) return night ? "☁️" : "⛅";
+  if (code === 3 || code === 45 || code === 48) return "☁️";
+  if (code >= 95) return "⛈️";
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return "❄️";
+  return "🌧️";
+}
+
 function air(aqi: number | null | undefined): [Tone, string] {
   if (aqi == null) return ["none", "Checking…"];
   if (aqi <= 50) return ["good", "Fresh air!"];
@@ -39,26 +50,31 @@ function air(aqi: number | null | undefined): [Tone, string] {
   return ["bad", "Yucky air"];
 }
 
-const CHECKUP: Record<Mood, [Tone, string]> = {
-  happy: ["good", "Looking great!"],
-  grateful: ["good", "Looking great!"],
-  thirsty: ["warn", "Needs a drink"],
-  soggy: ["warn", "Too wet"],
-  too_dark: ["warn", "Needs light"],
-  sleepy: ["calm", "Resting"],
-  unwell: ["bad", "Needs care"],
-};
+const LEAF_WORDS: Record<string, string> = { yellowing: "yellow", browning: "brown", wilting: "droopy" };
+const LOOKS_WORRY = /\b(yellow|brown|spots?|droop|drooping|wilt|wilting|wilted|dry leaves|unhealthy)\b/i;
 
-/** Four big, friendly gauges: water, sunshine, air and how the plant looks on camera. */
+/** The look card is about the leaves only, so it can't contradict the water or sun cards. */
+function leaves(state: PlantState | null): [Tone, string] {
+  const issues = state?.leaf_issues;
+  if (issues && issues.length) return ["bad", `Leaves look ${issues.map((i) => LEAF_WORDS[i] ?? i).join(" & ")}`];
+  if (issues) return ["good", "Healthy leaves"];
+  if (state?.looks) return LOOKS_WORRY.test(state.looks) ? ["warn", "Check my leaves"] : ["good", "Healthy leaves"];
+  return ["none", "Soon!"];
+}
+
+/** Four big, friendly gauges: water, sunshine, the weather outside and how the plant looks on camera. */
 export function StatCards({ state, face, dry, soggy }: Props) {
   const water = state?.moisture_pct ?? null;
   const sun = state?.light_pct ?? null;
   const [waterTone, waterText]: [Tone, string] =
     water == null ? ["none", "Can't tell yet"] : water < dry ? ["bad", "Thirsty!"] : water > soggy ? ["warn", "Too wet!"] : ["good", "Just right"];
   const [sunTone, sunText]: [Tone, string] =
-    sun == null ? ["none", "Can't tell yet"] : face === "sleepy" ? ["calm", "Night time"] : face === "too_dark" ? ["bad", "Too dark!"] : ["good", "Sunny!"];
+    sun == null ? ["none", "Can't tell yet"]
+      : state?.is_night || face === "sleepy" ? ["calm", "Night time"]
+      : face === "too_dark" ? ["bad", "Too dark!"]
+      : ["good", "Sunny!"];
   const [airTone, airText] = air(state?.air_aqi);
-  const [lookTone, lookText] = state?.checkup_mood ? CHECKUP[state.checkup_mood] : (["none", "Soon!"] as [Tone, string]);
+  const [lookTone, lookText] = leaves(state);
 
   return (
     <section className="stats">
@@ -77,13 +93,15 @@ export function StatCards({ state, face, dry, soggy }: Props) {
       </article>
 
       <article className="stat card stat-air">
-        <header><span className="title-icon bg-teal">🌬️</span> Air</header>
+        <header><span className="title-icon bg-teal">{weatherIcon(state?.weather_code, !!state?.is_night)}</span> Outside</header>
         <strong className="stat-value">
-          {state?.air_aqi == null ? "–" : Math.round(state.air_aqi)}
-          <small> AQI</small>
+          {state?.outdoor_temp_f == null ? "–" : `${Math.round(state.outdoor_temp_f)}°F`}
         </strong>
-        <Meter value={state?.air_aqi == null ? null : Math.min(100, (state.air_aqi / 200) * 100)} color="linear-gradient(90deg,#2ec4b6,#7ed957)" />
-        <Chip tone={airTone}>{airText}</Chip>
+        <p className="outside-line">
+          {state?.weather ?? "Checking the weather…"}
+          {state?.outdoor_humidity != null && ` · ${Math.round(state.outdoor_humidity)}% humid`}
+        </p>
+        <Chip tone={airTone}>{state?.air_aqi == null ? airText : `${airText} · AQI ${Math.round(state.air_aqi)}`}</Chip>
       </article>
 
       <article className="stat card stat-look">
