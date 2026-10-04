@@ -7,10 +7,17 @@ even with no incoming data. Default thresholds are demonstrative, not horticultu
 Edit `shared/plant-profile.json` before the initial seed or use the profile command described
 in deployment.md and restart the single worker for an existing database.
 
-Priority: **grateful → thirsty → unwell → too_dark → happy**. A dry condition enters at
+Priority: **grateful → thirsty → soggy → unwell → too_dark → sleepy → happy**.
+Soggy enters when smoothed moisture stays at or above `soggy_enter` for `soggy_seconds`
+(default 120 s) and exits below `soggy_exit`. Darkness between `night_start_hour` and
+`night_end_hour` in the profile's timezone (21:00–07:00 by default) is `sleepy`, which is
+silent; the same darkness during the day is `too_dark`. Registering a plant applies the
+moisture bands for its type (succulent 15/22 dry, 60/70 soggy; plant 30/40, 80/90;
+tree 25/35, 85/92). Grateful is a live moment only and is never a care-log label. A dry condition enters at
 ≤30% for 3 seconds and exits at ≥40% for 3 seconds. The hysteresis band retains the latch.
-Darkness enters at ≤100 lux for 3 seconds and exits at ≥150 lux for 3 seconds, only when
-reading and profile light units match. Raw-unit light requires explicitly chosen raw thresholds.
+Darkness enters at ≤200 and exits at ≥300 raw Arduino ADC counts (0–1023), each held for
+3 seconds, and only when the reading's light unit matches the profile's. Lux sensors need
+lux thresholds in the profile.
 Leaf color concern requires 2 confirming observations with total yellow/brown ≥0.35;
 it clears after 2 observations ≤0.25, and expires after 300 seconds without a usable update.
 

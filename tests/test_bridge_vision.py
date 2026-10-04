@@ -6,7 +6,6 @@ import pytest
 
 from backend.sensors.bridge import publish, replay_rows, validate_backend_url
 from backend.sensors.calibration import Calibration
-from backend.sensors.freewili_adapter import FreeWiliAdapter, HardwareConfig, MeasurementUnavailable
 from backend.vision.observe import ColorBaseline, capture
 from shared.contracts import SensorReading, Status
 
@@ -51,35 +50,6 @@ def test_remote_url_validation():
         with pytest.raises(ValueError):
             validate_backend_url(url)
     validate_backend_url("https://plant.example")
-
-
-def test_verified_adapter_lifecycle(monkeypatch):
-    calls = []
-
-    class Result:
-        def expect(self, message):
-            return None
-
-    class Device:
-        def __str__(self):
-            return "device-A"
-
-        def open(self, timeout_sec):
-            calls.append("open")
-            return Result()
-
-        def close(self):
-            calls.append("close")
-
-    monkeypatch.setattr(FreeWiliAdapter, "candidates", staticmethod(lambda: [Device()]))
-    adapter = FreeWiliAdapter(HardwareConfig("device-A", "test-board", "test-firmware"))
-    adapter.connect()
-    with pytest.raises(MeasurementUnavailable):
-        adapter.read_moisture()
-    with pytest.raises(MeasurementUnavailable):
-        adapter.read_light()
-    adapter.cleanup()
-    assert calls == ["open", "close"]
 
 
 def test_missing_image_or_camera_does_not_crash(monkeypatch):

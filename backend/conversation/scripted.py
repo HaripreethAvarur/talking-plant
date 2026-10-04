@@ -1,24 +1,34 @@
-"""Scripted lines: the plant's fixed announcements and the offline fallback replies.
+"""Every fixed line the plant says: mood announcements, greetings and offline replies.
 
-Lines without {placeholders} are fully cacheable by the voice (Task 7);
-`python -m backend.speech.pregenerate` renders all of them ahead of the demo.
+The mood engine, the UI hub and the reply fallback all take their wording from here.
+Lines without {placeholders} are cacheable by the voice;
+`python -m backend.speech.pregenerate` records all of them ahead of the demo.
 """
-
-from __future__ import annotations
 
 import re
 
 from shared.contracts import Mood
 from shared.contracts import UIPlantState as PlantState
 
-# What the plant says on its own when its mood changes (used by the agent, Task 4).
+# What the plant says on its own when its mood changes (backend/agent/mood.py).
 MOOD_LINES: dict[Mood, str] = {
-    Mood.THIRSTY: "I'm thirsty! Can you give me some water?",
-    Mood.GRATEFUL: "Thank you! That feels so much better.",
-    Mood.TOO_DARK: "It's a little dark in here. Can you move me near the light?",
-    Mood.UNWELL: "My leaves don't feel so good today.",
-    Mood.HAPPY: "I feel great today!",
+    Mood.thirsty: "I'm thirsty! Can you give me some water?",
+    Mood.soggy: "Whoa, that's a lot of water! I need a little time to dry out.",
+    Mood.grateful: "Thank you! That feels so much better.",
+    Mood.too_dark: "It's a little dark in here. Can you move me near the light?",
+    Mood.unwell: "My leaves don't feel so good today.",
+    Mood.happy: "I feel great today!",
 }
+
+# Said when the sensors stop reporting (the UI also shows a sleeping face).
+OFFLINE_LINE = "I can't feel my roots right now. Is my sensor plugged in?"
+
+# Said when a touch on the pad opens the microphone.
+GREETING_LINE = "Hi there! What would you like to know?"
+
+# Said instead of guessing when a question needs a reading we don't have.
+NO_MOISTURE_LINE = "I can't measure my soil yet. Could a grown-up check my sensor?"
+NO_CAMERA_LINE = "I don't have a clear look at my leaves yet. Could you check the camera?"
 
 # Questions the UI offers as buttons when speech-to-text is unavailable.
 QUICK_QUESTIONS = [
@@ -43,29 +53,34 @@ _INTENTS: list[tuple[str, re.Pattern[str]]] = [
 # Fallback replies by intent and mood. "*" is the default for any mood.
 _REPLIES: dict[str, dict[str, str]] = {
     "wellbeing": {
-        Mood.THIRSTY: "Not really. My soil is only {moisture}% wet, so I'm thirsty.",
-        Mood.TOO_DARK: "I'm okay, but my light is only {light}%. I'd love more sun.",
-        Mood.UNWELL: "My leaves look a bit {leaf_issue}, so I'm not feeling my best.",
-        Mood.GRATEFUL: "I'm so much better now that I had a drink!",
+        Mood.thirsty: "Not really. My soil is only {moisture}% wet, so I'm thirsty.",
+        Mood.soggy: "I'm a bit soggy! My soil is {moisture}% wet, so no more water for now.",
+        Mood.sleepy: "I'm cozy and sleepy. Plants rest at night, just like you!",
+        Mood.too_dark: "I'm okay, but my light is only {light}%. I'd love more sun.",
+        Mood.unwell: "My leaves look a bit {leaf_issue}, so I'm not feeling my best.",
+        Mood.grateful: "I'm so much better now that I had a drink!",
         "*": "I'm doing great! My soil is {moisture}% wet and I have plenty of light.",
     },
     "needs": {
-        Mood.THIRSTY: "I need some water, please!",
-        Mood.TOO_DARK: "I need more light. Can you put me near a window?",
-        Mood.UNWELL: "Could a grown-up check my leaves for me?",
+        Mood.thirsty: "I need some water, please!",
+        Mood.soggy: "I need some time to dry out. Please don't water me today.",
+        Mood.too_dark: "I need more light. Can you put me near a window?",
+        Mood.unwell: "Could a grown-up check my leaves for me?",
         "*": "I have everything I need right now. Thanks for asking!",
     },
     "water": {
-        Mood.THIRSTY: "Yes please! My soil is only {moisture}% wet.",
-        Mood.GRATEFUL: "I just had a nice drink. Thank you!",
+        Mood.thirsty: "Yes please! My soil is only {moisture}% wet.",
+        Mood.soggy: "No thank you! My soil is already {moisture}% wet.",
+        Mood.grateful: "I just had a nice drink. Thank you!",
         "*": "My soil is {moisture}% wet, so I'm not thirsty right now.",
     },
     "light": {
-        Mood.TOO_DARK: "I love the sun, but it's too dark here. My light is only {light}%.",
+        Mood.too_dark: "I love the sun, but it's too dark here. My light is only {light}%.",
+        Mood.sleepy: "It's night time, so I'm resting. I'll soak up the sun tomorrow!",
         "*": "I love the sun! It helps me make my food.",
     },
     "leaves": {
-        Mood.UNWELL: "Some of my leaves look {leaf_issue}. That means I need some care.",
+        Mood.unwell: "Some of my leaves look {leaf_issue}. That means I need some care.",
         "*": "My leaves look nice and green today!",
     },
     "name": {"*": "My name is {name}! I'm a {species} plant."},
@@ -90,6 +105,15 @@ def classify(question: str) -> str:
 _LEAF_WORDS = {"yellowing": "yellow", "browning": "brown", "wilting": "droopy"}
 
 
+def missing_reading_reply(intent: str, state: PlantState) -> str | None:
+    """A line admitting a missing reading, when the question can't be answered without it."""
+    if intent == "leaves" and state.leaf_issues is None and not state.looks:
+        return NO_CAMERA_LINE
+    if intent in ("water", "wellbeing", "needs") and state.moisture_pct is None:
+        return NO_MOISTURE_LINE
+    return None
+
+
 def _fill(template: str, state: PlantState, name: str, species: str) -> str:
     issue = state.leaf_issues[0] if state.leaf_issues else "tired"
     return template.format(
@@ -107,7 +131,11 @@ def scripted_reply(question: str, state: PlantState, name: str, species: str) ->
             "{light}" in template and state.light_pct is None
         )
 
-    by_mood = _REPLIES[classify(question)]
+    intent = classify(question)
+    missing = missing_reading_reply(intent, state)
+    if missing:
+        return missing
+    by_mood = _REPLIES[intent]
     # Never say "?%": skip to a template that only uses values we have.
     for template in (by_mood.get(state.mood), by_mood["*"], _REPLIES["unknown"]["*"]):
         if template and not missing_reading(template):
@@ -117,7 +145,14 @@ def scripted_reply(question: str, state: PlantState, name: str, species: str) ->
 
 def cacheable_lines() -> list[str]:
     """Every scripted line that has no live values in it."""
-    lines = list(MOOD_LINES.values()) + [REDIRECT_LINE]
+    lines = [
+        *MOOD_LINES.values(),
+        GREETING_LINE,
+        OFFLINE_LINE,
+        NO_MOISTURE_LINE,
+        NO_CAMERA_LINE,
+        REDIRECT_LINE,
+    ]
     for by_mood in _REPLIES.values():
         lines += [t for t in by_mood.values() if "{" not in t]
     return list(dict.fromkeys(lines))

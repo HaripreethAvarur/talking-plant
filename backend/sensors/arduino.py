@@ -1,4 +1,4 @@
-"""Arduino bridge modes and diagnostic command, independent of server/CV dependencies."""
+"""Arduino bridge modes (real board and simulated) and a port-listing/inspect command."""
 
 import argparse
 import asyncio
@@ -8,64 +8,44 @@ from uuid import uuid4
 
 from dotenv import load_dotenv
 
-from backend.sensors.arduino_adapter import ArduinoSerialAdapter, FrameDecoder
+from backend.sensors.arduino_adapter import DEVICE_ID, ArduinoSerialAdapter, HubFrameDecoder
 from backend.sensors.calibration import Calibration
 from shared.contracts import Source, TouchObservation
 
 
 async def send(client, observation):
-    from backend.sensors.bridge import publish
+    from backend.sensors.bridge import publish, report
 
     path = (
         "/api/v1/touch-observations"
         if isinstance(observation, TouchObservation)
         else "/api/v1/sensor-readings"
     )
-    result = await publish(client, path, observation)
-    if result:
-        print(
-            json.dumps(
-                {"status": result["status"], "event_id": result["event_id"], "events": result["events"]}
-            ),
-            flush=True,
-        )
+    report(await publish(client, path, observation))
 
 
-def simulated_frames(session, step):
-    """Same wire format as firmware. Demo touch at 4 seconds; watering at 8 seconds."""
-    return json.dumps(
-        {
-            "protocol": "talking-plant/1",
-            "type": "sensor",
-            "device_id": "arduino-plant-1",
-            "session_id": str(session),
-            "sequence": step,
-            "uptime_ms": step * 1000,
-            "moisture_raw": 290 if step < 8 else 650,
-            "light_raw": 600,
-            "touch": step == 4,
-        }
-    )
+def simulated_frame(step):
+    """Same wire format as the hub sketch. Touch at 4 seconds (released at 5); watering at 8."""
+    return json.dumps({"moisture_raw": 290 if step < 8 else 650, "light_raw": 600, "touch": int(step == 4)})
 
 
 async def run(client, args):
     if args.mode == "arduino-mock":
-        session = uuid4()
-        decoder = FrameDecoder(
-            session,
+        decoder = HubFrameDecoder(
+            uuid4(),
             args.plant_id,
             Calibration(
                 dry_raw=200,
                 wet_raw=800,
                 sensor_model="SIMULATED Grove v1.4",
-                device_id="arduino-plant-1",
+                device_id=DEVICE_ID,
                 calibration_id="arduino-mock-v1",
             ),
             Source.mock,
         )
         step = 0
         while not args.count or step < args.count:
-            for observation in decoder.decode(simulated_frames(session, step)):
+            for observation in decoder.decode(simulated_frame(step)):
                 await send(client, observation)
             step += 1
             await asyncio.sleep(1)

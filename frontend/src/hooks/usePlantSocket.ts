@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { viewerToken } from "../api";
 import type { ChildUtterance, ListenRequest, PlantState, ServerMessage, SpeechAudio } from "../contracts";
 
 const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
 
-/** Live connection to backend/server.py; reconnects on its own if the backend restarts. */
+/** Live connection to the backend /ws; reconnects on its own if the backend restarts. */
 export function usePlantSocket(onAudio: (audio: SpeechAudio) => void, onListen?: (request: ListenRequest) => void) {
   const [state, setState] = useState<PlantState | null>(null);
   const [connected, setConnected] = useState(false);
@@ -23,7 +24,7 @@ export function usePlantSocket(onAudio: (audio: SpeechAudio) => void, onListen?:
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
       ws.onopen = () => {
-        const token = sessionStorage.getItem("plantViewerToken");
+        const token = viewerToken();
         if (token) ws.send(JSON.stringify({ type: "auth", token }));
         setConnected(true);
         retryMs = 500;

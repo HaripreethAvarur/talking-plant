@@ -1,7 +1,11 @@
 from datetime import timedelta
 
 from backend.agent.mood import MoodEngine
-from shared.contracts import LeafObservation, Mood, PlantProfile, Source, Status
+from backend.conversation.scripted import MOOD_LINES
+from shared.contracts import LeafObservation, Mood, PlantProfile, Source, Status, Thresholds
+
+# No night hours, so "dark" always means too_dark whatever time the tests run.
+DAYTIME = PlantProfile(thresholds=Thresholds(night_start_hour=0, night_end_hour=0))
 
 
 def feed(engine, row):
@@ -11,7 +15,10 @@ def feed(engine, row):
 def test_dry_watered_exact_speech_and_return(reading):
     engine = MoodEngine(PlantProfile())
     events = [event for step in range(24) for event in feed(engine, reading(step))]
-    assert [e.suggested_text for e in events if e.suggested_text] == ["I'm thirsty.", "Thank you."]
+    assert [e.suggested_text for e in events if e.suggested_text] == [
+        MOOD_LINES[Mood.thirsty],
+        MOOD_LINES[Mood.grateful],
+    ]
     assert sum(e.kind == "watering" for e in events) == 1
     assert sum(e.kind == "mood_changed" and e.mood == Mood.grateful for e in events) == 1
     assert engine.state.mood == Mood.happy
@@ -21,7 +28,7 @@ def test_noise_does_not_water_or_repeat_thirst(reading):
     engine = MoodEngine(PlantProfile())
     events = [e for step in range(120) for e in feed(engine, reading(step, "noisy"))]
     assert not any(e.kind == "watering" for e in events)
-    assert sum(e.suggested_text == "I'm thirsty." for e in events) <= 1
+    assert sum(e.suggested_text == MOOD_LINES[Mood.thirsty] for e in events) <= 1
 
 
 def test_disconnect_reconnect_not_watering(reading):
@@ -72,10 +79,10 @@ def test_isolated_spike_and_sustained_rise(reading):
 
 
 def test_dark_units_priority_and_leaf_confirmation(reading):
-    engine = MoodEngine(PlantProfile())
+    engine = MoodEngine(DAYTIME)
     for step in range(6):
         row = reading(step, "dark")
-        row.light.unit = "raw"
+        row.light.unit = "lux"  # a different unit than the profile's: ignored
         feed(engine, row)
     assert engine.state.mood == Mood.happy
     for step in range(6, 12):

@@ -1,8 +1,8 @@
 """Version 1 wire contracts; export with python -m scripts.export_contracts.
 
-The detailed models (Contract-based) are the canonical backend representations.
-The simpler UI models at the bottom are used by the WebSocket server and
-conversation modules to communicate with the React frontend.
+The Contract-based models are what sensors, the mood engine and the database
+exchange. The models at the bottom are the WebSocket messages for the React UI;
+frontend/src/contracts.ts mirrors them.
 """
 
 import time
@@ -55,17 +55,18 @@ class Status(str, Enum):
 
 
 class Mood(str, Enum):
-    HAPPY = "happy"
-    THIRSTY = "thirsty"
-    TOO_DARK = "too_dark"
-    UNWELL = "unwell"
-    GRATEFUL = "grateful"
-    # lowercase aliases for backend code
     happy = "happy"
     thirsty = "thirsty"
-    too_dark = "too_dark"
+    soggy = "soggy"  # soil stayed very wet: too much water
+    too_dark = "too_dark"  # dark during the day
+    sleepy = "sleepy"  # dark at night: normal, the plant is resting
     unwell = "unwell"
-    grateful = "grateful"
+    grateful = "grateful"  # a few seconds after a watering; live face only, never a log label
+
+
+# Labels ASI:One may give an hour or a day. Grateful is a moment, not a state.
+LOG_MOODS = (Mood.happy, Mood.thirsty, Mood.soggy, Mood.too_dark, Mood.sleepy, Mood.unwell)
+DAY_MOODS = (Mood.happy, Mood.thirsty, Mood.soggy, Mood.too_dark, Mood.unwell)
 
 
 Percent = Annotated[float, Field(ge=0, le=100)]
@@ -159,9 +160,10 @@ class Thresholds(Contract):
     dry_enter: Percent = 30
     dry_exit: Percent = 40
     dry_seconds: float = Field(default=3, ge=0)
-    dark_enter: float = Field(default=100, ge=0)
-    dark_exit: float = Field(default=150, ge=0)
-    light_unit: Literal["lux", "raw"] = "lux"
+    # Raw 0-1023 ADC counts from the Arduino light sensor (not lux).
+    dark_enter: float = Field(default=200, ge=0)
+    dark_exit: float = Field(default=300, ge=0)
+    light_unit: Literal["lux", "raw"] = "raw"
     dark_seconds: float = Field(default=3, ge=0)
     watering_rise: float = Field(default=20, gt=0, le=100)
     watering_window: float = Field(default=30, gt=0)
@@ -175,11 +177,18 @@ class Thresholds(Contract):
     leaf_color_exit: Proportion = 0.25
     leaf_confirmations: int = Field(default=2, ge=1)
     leaf_stale_seconds: float = Field(default=300, gt=0)
+    soggy_enter: Percent = 90
+    soggy_exit: Percent = 80
+    soggy_seconds: float = Field(default=120, ge=0, description="how long soil must stay very wet")
+    night_start_hour: int = Field(default=21, ge=0, le=23, description="local time; dark is normal from here")
+    night_end_hour: int = Field(default=7, ge=0, le=23)
 
     @model_validator(mode="after")
     def ordered(self):
         if self.dry_exit <= self.dry_enter or self.dark_exit <= self.dark_enter:
             raise ValueError("exit thresholds must exceed enter thresholds")
+        if not self.dry_exit < self.soggy_exit < self.soggy_enter:
+            raise ValueError("moisture bands must be ordered: dry exit < soggy exit < soggy enter")
         if self.leaf_color_exit >= self.leaf_color_enter:
             raise ValueError("leaf exit must be below enter")
         if self.watering_sustain >= self.watering_window:
@@ -187,11 +196,51 @@ class Thresholds(Contract):
         return self
 
 
+class PlantType(str, Enum):
+    """Moisture needs differ by category; per-species thresholds aren't publicly available."""
+
+    succulent = "succulent"
+    plant = "plant"
+    tree = "tree"
+
+
+Username = Annotated[str, Field(pattern=r"^[A-Za-z0-9_.-]{2,32}$")]
+
+
+# Relative-moisture bands per plant type: (dry_enter, dry_exit, soggy_exit, soggy_enter).
+TYPE_MOISTURE = {
+    PlantType.succulent: (15, 22, 60, 70),
+    PlantType.plant: (30, 40, 80, 90),
+    PlantType.tree: (25, 35, 85, 92),
+}
+
+
 class PlantProfile(Contract):
     plant_id: PlantID = "plant-1"
     name: str = "Sprout"
-    species: str = "Unspecified demo plant"
+    species: str = "pothos"
     thresholds: Thresholds = Field(default_factory=Thresholds)
+    username: Username | None = None  # set when a kid registers this plant
+    plant_type: PlantType = PlantType.plant
+    timezone: str = "America/Detroit"
+
+    def for_registration(self, registration: "PlantRegistration") -> "PlantProfile":
+        """This profile adopted by a registered plant: its name, type and moisture bands."""
+        dry_enter, dry_exit, soggy_exit, soggy_enter = TYPE_MOISTURE[registration.plant_type]
+        thresholds = self.thresholds.model_copy(
+            update=dict(
+                dry_enter=dry_enter, dry_exit=dry_exit, soggy_exit=soggy_exit, soggy_enter=soggy_enter
+            )
+        )
+        return self.model_copy(
+            update=dict(
+                name=registration.plant_name,
+                species=registration.plant_type.value,
+                plant_type=registration.plant_type,
+                username=registration.username,
+                thresholds=Thresholds.model_validate(thresholds.model_dump()),
+            )
+        )
 
 
 class PlantState(Contract):
@@ -222,12 +271,6 @@ class PlantEvent(Contract):
     observation_id: UUID | None = None
 
 
-class ChildUtterance(Observation):
-    source: Literal[Source.hardware, Source.mock, Source.replay]
-    text: str = Field(min_length=1, max_length=4000)
-    language: str = "en"
-
-
 class ConversationContext(Contract):
     plant_id: PlantID
     timestamp: AwareDatetime = Field(default_factory=utcnow)
@@ -235,9 +278,8 @@ class ConversationContext(Contract):
     profile: PlantProfile
     state: PlantState
     recent_events: list[PlantEvent]
-    guidance: str = (
-        "Use event_id to deduplicate speech. Observations are not diagnoses. Person 2 owns final wording."
-    )
+    hourly: list["HourlyReading"] = Field(default_factory=list, description="care log, oldest first")
+    guidance: str = "Use event_id to deduplicate speech. Observations are not diagnoses."
 
 
 class StreamMessage(Contract):
@@ -247,19 +289,69 @@ class StreamMessage(Contract):
 
 
 # ===================================================================
-# UI-facing contracts (used by WebSocket server, conversation, speech)
+# Kid's plant, hourly care log (rolling 30 days) and weekly leaderboard
+# ===================================================================
+
+
+class PlantRegistration(Contract):
+    """One row per kid and plant. No login: the username is the identity."""
+
+    username: Username
+    plant_name: str = Field(min_length=1, max_length=40)
+    plant_type: PlantType
+    location: str = Field(pattern=r"^\d{5}$", description="US ZIP code, used for local air quality")
+    created_at: AwareDatetime = Field(default_factory=utcnow)
+
+
+class HourlyReading(Contract):
+    """One row per plant per logging interval (an hour normally; a minute in demos).
+    `hour` is the interval's start. mood is ASI's label for it; day_mood is set only on
+    the last row of each day, by the nightly job, and feeds the leaderboard."""
+
+    username: Username
+    hour: AwareDatetime
+    sun_pct: Percent | None = None
+    water_pct: Percent | None = None
+    air_aqi: Annotated[float, Field(ge=0)] | None = None
+    health: str | None = Field(default=None, max_length=1000, description="Ollama's description of the photo")
+    mood: Mood | None = None
+    day_mood: Mood | None = None
+
+    @field_validator("hour")
+    @classmethod
+    def whole_minute(cls, value):
+        return value.astimezone(timezone.utc).replace(second=0, microsecond=0)
+
+
+class LeaderboardEntry(Contract):
+    rank: int = Field(ge=1)
+    username: Username
+    plant_name: str
+    plant_type: PlantType
+    location: str
+    happy_days: int = Field(ge=0, le=7)
+    score: Proportion = Field(description="happy_days / 7 over the last 7 days")
+
+
+# ===================================================================
+# UI WebSocket messages (backend/ui.py <-> frontend/src/contracts.ts)
 # ===================================================================
 
 
 class UIPlantState(BaseModel):
-    """Simplified plant state sent over WebSocket to the React UI."""
+    """What the plant's face, gauges and speech bubble show; also the input to replies."""
 
     type: Literal["plant_state"] = "plant_state"
     mood: Mood
     message: Optional[str] = None
     moisture_pct: Optional[float] = None
     light_pct: Optional[float] = None
-    leaf_issues: list[str] = []
+    # None: the camera has no recent look at the leaves. []: it looked and saw nothing wrong.
+    leaf_issues: list[str] | None = None
+    looks: str | None = None  # the vision model's latest description, if under 2 hours old
+    looks_at: float | None = None  # when that photo was taken (epoch seconds)
+    air_aqi: float | None = None  # outdoor US AQI for the plant's ZIP code
+    checkup_mood: Mood | None = None  # ASI's label at the latest care-log checkup
     ts: float = Field(default_factory=now)
     sensor_health: Status = Status.missing
     light_unit: Literal["lux", "raw"] | None = None
@@ -274,32 +366,12 @@ class ListenRequest(Contract):
     duration_ms: int = Field(default=6000, ge=1000, le=15000)
 
 
-class UIChildUtterance(BaseModel):
-    """Simplified utterance from the UI (speech-to-text or button)."""
+class ChildUtterance(BaseModel):
+    """A child's question from the UI: transcribed speech or a tapped question button."""
 
     type: Literal["child_utterance"] = "child_utterance"
     text: str
     source: Literal["stt", "button", "typed"] = "stt"
-    ts: float = Field(default_factory=now)
-
-
-class UISensorReading(BaseModel):
-    """Simplified sensor reading for the UI."""
-
-    type: Literal["sensor_reading"] = "sensor_reading"
-    moisture_pct: float = Field(ge=0, le=100)
-    light_pct: float = Field(ge=0, le=100)
-    watered: bool = False
-    board_connected: bool = True
-    ts: float = Field(default_factory=now)
-
-
-class UILeafObservation(BaseModel):
-    """Simplified leaf observation for the UI."""
-
-    type: Literal["leaf_observation"] = "leaf_observation"
-    issues: list[Literal["yellowing", "browning", "wilting"]] = []
-    confidence: float = Field(default=0.0, ge=0, le=1)
     ts: float = Field(default_factory=now)
 
 
@@ -316,3 +388,6 @@ class SpeechAudio(BaseModel):
     mime: str = "audio/mpeg"
     cached: bool = False
     ts: float = Field(default_factory=now)
+
+
+ConversationContext.model_rebuild()

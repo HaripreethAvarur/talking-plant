@@ -7,15 +7,15 @@
     "schema_version": "1.0",
     "plant_id": "plant-1",
     "name": "Sprout",
-    "species": "Unspecified demo plant",
+    "species": "pothos",
     "thresholds": {
       "schema_version": "1.0",
       "dry_enter": 30.0,
       "dry_exit": 40.0,
       "dry_seconds": 3.0,
-      "dark_enter": 100.0,
-      "dark_exit": 150.0,
-      "light_unit": "lux",
+      "dark_enter": 200.0,
+      "dark_exit": 300.0,
+      "light_unit": "raw",
       "dark_seconds": 3.0,
       "watering_rise": 20.0,
       "watering_window": 30.0,
@@ -28,8 +28,16 @@
       "leaf_color_enter": 0.35,
       "leaf_color_exit": 0.25,
       "leaf_confirmations": 2,
-      "leaf_stale_seconds": 300.0
-    }
+      "leaf_stale_seconds": 300.0,
+      "soggy_enter": 90.0,
+      "soggy_exit": 80.0,
+      "soggy_seconds": 120.0,
+      "night_start_hour": 21,
+      "night_end_hour": 7
+    },
+    "username": null,
+    "plant_type": "plant",
+    "timezone": "America/Detroit"
   },
   "state": {
     "schema_version": "1.0",
@@ -49,7 +57,7 @@
     "light": {
       "schema_version": "1.0",
       "value": 600.0,
-      "unit": "lux",
+      "unit": "raw",
       "status": "ok"
     },
     "smoothed_moisture_percent": 15.0,
@@ -68,9 +76,10 @@
       "kind": "mood_changed",
       "mood": "thirsty",
       "reason": "Persistent dry soil.",
-      "suggested_text": "I'm thirsty.",
+      "suggested_text": "I'm thirsty! Can you give me some water?",
       "observation_id": "00000000-0000-0000-0000-000000000001"
     }
   ],
-  "guidance": "Use event_id to deduplicate speech. Observations are not diagnoses. Person 2 owns final wording."
+  "hourly": [],
+  "guidance": "Use event_id to deduplicate speech. Observations are not diagnoses."
 }

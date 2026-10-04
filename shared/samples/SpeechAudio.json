@@ -1,0 +1,8 @@
+{
+  "type": "speech_audio",
+  "text": "I'm thirsty! Can you give me some water?",
+  "audio_url": "/audio/0123456789abcdef01234567.mp3",
+  "mime": "audio/mpeg",
+  "cached": false,
+  "ts": 1790942400.0
+}

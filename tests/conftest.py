@@ -1,10 +1,31 @@
 from datetime import timedelta
 
 import pytest
+from pydantic import SecretStr
 
-from backend.config import Settings
+from backend.config import Settings, get_settings
 from backend.sensors.simulator import scenario_reading
 from shared.contracts import utcnow
+
+
+@pytest.fixture(autouse=True)
+def no_paid_apis(monkeypatch):
+    """Tests never spend ElevenLabs/ASI:One credit, even with real keys in .env."""
+    for key in ("elevenlabs_api_key", "asi_api_key"):
+        monkeypatch.setattr(get_settings(), key, SecretStr(""))
+
+
+@pytest.fixture(autouse=True)
+def no_network_lookups(monkeypatch):
+    """The care log's air-quality and camera/Ollama calls are faked in tests."""
+    from backend import air
+    from backend.vision import health
+
+    async def nothing(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(air, "us_aqi", nothing)
+    monkeypatch.setattr(health, "look", nothing)
 
 
 @pytest.fixture

@@ -14,3 +14,6 @@ frontend/.vite/
 # Local sensor calibration and native SQLite state
 config/calibration.json
 plant.db*
+
+# Browser profile used by scripts/kiosk.py
+.kiosk-profile/

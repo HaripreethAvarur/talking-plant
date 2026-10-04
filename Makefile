@@ -1,57 +1,67 @@
 PYTHON ?= python3
-VENV = .venv/bin
 ARGS ?=
+ifeq ($(OS),Windows_NT)
+PY = .venv/Scripts/python
+else
+PY = .venv/bin/python
+endif
 
-.PHONY: install install-vision install-hardware install-fetch install-arduino arduino-devices arduino arduino-mock touch local neon stop native mock replay devices freewili calibrate camera image test lint build schemas smoke migrate
+.PHONY: install install-vision install-fetch install-arduino native local neon stop mock replay arduino arduino-mock arduino-devices touch calibrate camera test lint build schemas smoke migrate lock
+
+# Setup
 install:
 	$(PYTHON) -m venv .venv
-	$(VENV)/python -m pip install --require-hashes -r requirements-dev.txt
+	$(PY) -m pip install --require-hashes -r requirements-dev.txt
 install-vision:
-	$(VENV)/python -m pip install -r requirements-vision.txt
-install-hardware:
-	$(VENV)/python -m pip install --require-hashes -r requirements-hardware.txt
+	$(PY) -m pip install -r requirements-vision.txt
 install-fetch:
-	$(VENV)/python -m pip install --require-hashes -r requirements-fetch.txt
+	$(PY) -m pip install --require-hashes -r requirements-fetch.txt
 install-arduino:
-	$(VENV)/python -m pip install -r requirements-arduino.txt
-arduino-devices:
-	$(VENV)/python -m backend.sensors.arduino $(ARGS)
-arduino:
-	$(VENV)/python -m backend.sensors.bridge --mode arduino $(ARGS)
-arduino-mock:
-	$(VENV)/python -m backend.sensors.bridge --mode arduino-mock --count 24 $(ARGS)
-touch:
-	$(VENV)/python -m scripts.touch
+	$(PY) -m pip install -r requirements-arduino.txt
+
+# Backend (one process serves the API, the UI WebSocket and audio)
+native:
+	$(PY) -m backend.server
 local:
 	docker compose up -d --build --wait
 neon:
 	docker compose -f compose.neon.yaml up -d --build --wait
 stop:
 	docker compose down
-native:
-	$(VENV)/uvicorn backend.api:create_app --factory --host 127.0.0.1 --port $${PORT:-8000} --workers 1
+
+# Sensor bridges (run next to the backend)
 mock:
-	$(VENV)/python -m backend.sensors.bridge --mode mock $(ARGS)
+	$(PY) -m backend.sensors.bridge --mode mock $(ARGS)
 replay:
-	$(VENV)/python -m backend.sensors.bridge --mode replay $(ARGS)
-devices:
-	$(VENV)/python -m backend.sensors.diagnostics $(ARGS)
-freewili:
-	$(VENV)/python -m backend.sensors.bridge --mode freewili $(ARGS)
+	$(PY) -m backend.sensors.bridge --mode replay $(ARGS)
+arduino:
+	$(PY) -m backend.sensors.bridge --mode arduino $(ARGS)
+arduino-mock:
+	$(PY) -m backend.sensors.bridge --mode arduino-mock --count 24 $(ARGS)
+arduino-devices:
+	$(PY) -m backend.sensors.arduino $(ARGS)
+touch:
+	$(PY) -m scripts.touch
 calibrate:
-	$(VENV)/python -m backend.sensors.calibration $(ARGS)
-camera image:
-	$(VENV)/python -m backend.vision.observe $(ARGS)
+	$(PY) -m backend.sensors.calibration $(ARGS)
+camera:
+	$(PY) -m backend.vision.observe $(ARGS)
+
+# Checks and maintenance
 test:
-	$(VENV)/python -m pytest -q
+	$(PY) -m pytest -q
 lint:
-	$(VENV)/ruff check backend shared scripts tests
-	$(VENV)/ruff format --check backend shared scripts tests
+	$(PY) -m ruff check backend shared scripts tests
+	$(PY) -m ruff format --check backend shared scripts tests
 build:
 	docker build -f backend/Dockerfile -t talking-plant-backend:local .
 schemas:
-	$(VENV)/python -m scripts.export_contracts
+	$(PY) -m scripts.export_contracts
 smoke:
-	$(VENV)/python -m scripts.smoke $(ARGS)
+	$(PY) -m scripts.smoke $(ARGS)
 migrate:
-	$(VENV)/python -m backend.database.migrate
+	$(PY) -m backend.database.migrate
+lock:
+	uv pip compile --universal --generate-hashes -q requirements.in -o requirements.txt
+	uv pip compile --universal --generate-hashes -q requirements-dev.in -o requirements-dev.txt
+	uv pip compile --universal --generate-hashes -q requirements-fetch.in -o requirements-fetch.txt

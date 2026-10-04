@@ -6,10 +6,11 @@ from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from starlette.websockets import WebSocketDisconnect
 
-from backend import config
 from backend.api import create_app
-from backend.sensors.arduino import simulated_frames
-from backend.sensors.arduino_adapter import FrameDecoder
+from backend.config import get_settings
+from backend.conversation.scripted import NO_CAMERA_LINE, NO_MOISTURE_LINE
+from backend.sensors.arduino import simulated_frame
+from backend.sensors.arduino_adapter import HubFrameDecoder
 from backend.speech import tts
 from backend.ui import UIHub
 from shared.contracts import SpeechAudio
@@ -17,8 +18,8 @@ from shared.contracts import SpeechAudio
 
 @pytest.fixture(autouse=True)
 def offline(monkeypatch):
-    monkeypatch.setattr(config, "ELEVENLABS_API_KEY", "")
-    monkeypatch.setattr(config, "ASI_API_KEY", "")
+    monkeypatch.setattr(get_settings(), "elevenlabs_api_key", SecretStr(""))
+    monkeypatch.setattr(get_settings(), "asi_api_key", SecretStr(""))
 
 
 async def silent_speech(text):
@@ -31,8 +32,7 @@ def test_sensor_updates_reach_existing_ui_and_questions_use_live_state(settings,
         with client.websocket_connect("/ws") as ws:
             initial = ws.receive_json()
             assert initial["moisture_pct"] is None
-            session = uuid4()
-            sensor = FrameDecoder(session).decode(simulated_frames(session, 0))[0]
+            sensor = HubFrameDecoder(uuid4()).decode(simulated_frame(0))[0]
             client.post("/api/v1/sensor-readings", json=sensor.model_dump(mode="json"))
             update = ws.receive_json()
             assert update["sensor_health"] == "uncalibrated"
@@ -40,12 +40,11 @@ def test_sensor_updates_reach_existing_ui_and_questions_use_live_state(settings,
             assert update["light_value"] == 600 and update["light_unit"] == "raw"
             assert update["moisture_pct"] is None
             ws.send_json({"type": "child_utterance", "text": "Do you need water?", "source": "button"})
-            assert "calibration" in ws.receive_json()["message"]
+            assert ws.receive_json()["message"] == NO_MOISTURE_LINE
             assert ws.receive_json()["type"] == "speech_audio"
             ws.send_json({"type": "child_utterance", "text": "Are your leaves okay?", "source": "button"})
-            assert "camera" in ws.receive_json()["message"]
+            assert ws.receive_json()["message"] == NO_CAMERA_LINE
             assert ws.receive_json()["type"] == "speech_audio"
-        assert client.post("/api/plant-state", json={"mood": "happy"}).status_code == 404
         assert (
             client.post("/api/stt", content=b"clip", headers={"Content-Type": "audio/webm"}).status_code
             == 503

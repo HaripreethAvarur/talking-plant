@@ -25,7 +25,8 @@ def scenario_reading(scenario, step, plant_id="plant-1", timestamp=None):
             status=Status.ok,
             calibration_id="mock-dry1000-wet200-v1",
         )
-        light = Light(value=20 if scenario == "dark" else 600, unit="lux", status=Status.ok)
+        # Raw ADC counts, like the Arduino light sensor.
+        light = Light(value=20 if scenario == "dark" else 600, unit="raw", status=Status.ok)
     return SensorReading(
         plant_id=plant_id,
         timestamp=timestamp or utcnow(),

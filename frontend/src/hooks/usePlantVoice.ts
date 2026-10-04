@@ -9,8 +9,9 @@ import type { SpeechAudio } from "../contracts";
  * had no audio (no key, offline and not cached) the browser's own speech
  * synthesis says the line instead, and the mouth flaps on a timer.
  *
- * Browsers block sound until the user interacts with the page, so call
- * unlock() from a click before the first line.
+ * Browsers block sound until the user interacts with the page, so unlock()
+ * runs on the first tap anywhere (or by itself in a kiosk browser that allows
+ * autoplay; see scripts/kiosk.py).
  */
 export function usePlantVoice() {
   const [speaking, setSpeaking] = useState(false);
@@ -110,6 +111,14 @@ export function usePlantVoice() {
   );
 
   useEffect(() => () => stopLoop(), []);
+
+  // A kiosk browser started with autoplay allowed needs no tap at all.
+  useEffect(() => {
+    const probe = new AudioContext();
+    const allowed = probe.state === "running";
+    void probe.close();
+    if (allowed) void unlock();
+  }, [unlock]);
 
   const stop = useCallback(() => {
     audioRef.current?.pause();

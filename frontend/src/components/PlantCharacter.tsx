@@ -1,142 +1,236 @@
-import type { Mood } from "../contracts";
+import { useId } from "react";
+import type { Face } from "../contracts";
 
-interface Look {
-  leaf: string;
-  leafDark: string;
-  face: string;
-  animation: string;
-  leafTilt: number; // degrees; positive droops the side leaves
-}
+const INK = "#2b1a4a";
 
-const LOOKS: Record<Mood, Look> = {
-  happy: { leaf: "#58b85c", leafDark: "#3e9443", face: "#7ccf6e", animation: "sway", leafTilt: -10 },
-  grateful: { leaf: "#4cc35a", leafDark: "#2f9a3e", face: "#86dc76", animation: "bounce", leafTilt: -22 },
-  thirsty: { leaf: "#a5b04a", leafDark: "#7f8a33", face: "#b9c46a", animation: "droop", leafTilt: 38 },
-  too_dark: { leaf: "#3f7f4c", leafDark: "#2c5d37", face: "#5c9a63", animation: "sleepy", leafTilt: 15 },
-  unwell: { leaf: "#9bab3f", leafDark: "#76832c", face: "#b1bf63", animation: "wobble", leafTilt: 25 },
+/** Head colours (top, bottom of the gradient) per face. */
+const SKIN: Record<Face, [string, string]> = {
+  happy: ["#9be564", "#45b33a"],
+  grateful: ["#a8f06a", "#4cc03d"],
+  thirsty: ["#d4d873", "#a5a943"],
+  soggy: ["#8be0c2", "#3fae8c"],
+  too_dark: ["#78b874", "#3f8446"],
+  sleepy: ["#7cbf86", "#428c55"],
+  unwell: ["#c5d46f", "#94a640"],
+  offline: ["#cfd5d0", "#9ea7a0"],
 };
 
-function Eyes({ mood }: { mood: Mood }) {
-  const ink = "#2b2b2b";
-  switch (mood) {
-    case "grateful": // closed, smiling eyes  ^ ^
-      return (
-        <g stroke={ink} strokeWidth={6} fill="none" strokeLinecap="round">
-          <path d="M70 118 q14 -16 28 0" />
-          <path d="M142 118 q14 -16 28 0" />
-        </g>
-      );
-    case "thirsty": // tired, half-closed
-    case "too_dark":
-      return (
-        <g>
-          <ellipse cx={84} cy={118} rx={13} ry={mood === "too_dark" ? 3 : 7} fill={ink} />
-          <ellipse cx={156} cy={118} rx={13} ry={mood === "too_dark" ? 3 : 7} fill={ink} />
-          <g stroke={ink} strokeWidth={4} strokeLinecap="round">
-            <path d="M68 104 l30 6" />
-            <path d="M172 104 l-30 6" />
-          </g>
-        </g>
-      );
-    case "unwell":
-      return (
-        <g stroke={ink} strokeWidth={5} strokeLinecap="round">
-          <path d="M74 108 l20 20 M94 108 l-20 20" />
-          <path d="M146 108 l20 20 M166 108 l-20 20" />
-        </g>
-      );
-    default:
-      return (
-        <g>
-          <circle cx={84} cy={116} r={13} fill={ink} />
-          <circle cx={156} cy={116} r={13} fill={ink} />
-          <circle cx={89} cy={111} r={4} fill="#fff" />
-          <circle cx={161} cy={111} r={4} fill="#fff" />
-        </g>
-      );
-  }
-}
-
-function Mouth({ mood, speaking, level }: { mood: Mood; speaking: boolean; level: number }) {
-  const ink = "#2b2b2b";
-  if (speaking) {
-    const open = 4 + level * 18;
+function Eyes({ face, skin }: { face: Face; skin: string }) {
+  if (face === "grateful") {
     return (
-      <g>
-        <ellipse cx={120} cy={158} rx={16 + level * 4} ry={open} fill="#6b2a2a" stroke={ink} strokeWidth={4} />
-        {open > 10 && <ellipse cx={120} cy={158 + open * 0.45} rx={9} ry={open * 0.35} fill="#e57373" />}
+      <g stroke={INK} strokeWidth={7} fill="none" strokeLinecap="round">
+        <path d="M98 150 q18 -22 36 0" />
+        <path d="M166 150 q18 -22 36 0" />
       </g>
     );
   }
-  const paths: Record<Mood, string> = {
-    happy: "M96 150 q24 26 48 0",
-    grateful: "M90 146 q30 36 60 0",
-    thirsty: "M100 164 q20 -14 40 0",
-    too_dark: "M104 160 h32",
-    unwell: "M98 160 q8 -8 16 0 q8 8 16 0 q8 -8 12 0",
+  if (face === "sleepy" || face === "offline") {
+    return (
+      <g stroke={INK} strokeWidth={6} fill="none" strokeLinecap="round">
+        <path d="M98 148 q18 14 36 0" />
+        <path d="M166 148 q18 14 36 0" />
+      </g>
+    );
+  }
+  const wide = face === "soggy";
+  const lid = face === "thirsty" || face === "unwell" ? 0.5 : face === "too_dark" ? 0.35 : 0;
+  const look = face === "too_dark" ? 6 : 0;
+  const eye = (cx: number) => (
+    <g className="eye">
+      <ellipse cx={cx} cy={146} rx={wide ? 22 : 19} ry={wide ? 26 : 23} fill="#fff" stroke={INK} strokeWidth={5} />
+      <circle cx={cx + 3 + look} cy={150} r={wide ? 8 : 12} fill={INK} />
+      <circle cx={cx + 8 + look} cy={143} r={4.5} fill="#fff" />
+      <circle cx={cx - 1 + look} cy={156} r={2} fill="#fff" />
+      {lid > 0 && (
+        <path
+          d={`M${cx - 23} ${146 - 25} h46 v${50 * lid} q-23 8 -46 0 z`}
+          fill={skin}
+          stroke={INK}
+          strokeWidth={5}
+          strokeLinejoin="round"
+        />
+      )}
+    </g>
+  );
+  return (
+    <g>
+      {eye(116)}
+      {eye(184)}
+    </g>
+  );
+}
+
+function Brows({ face }: { face: Face }) {
+  const shapes: Partial<Record<Face, [string, string]>> = {
+    thirsty: ["M96 118 q18 -4 38 -14", "M204 118 q-18 -4 -38 -14"], // worried: inner ends up
+    soggy: ["M98 104 q18 -12 36 0", "M166 104 q18 -12 36 0"],
+    unwell: ["M98 118 q9 -8 18 0 q9 8 18 0", "M166 118 q9 -8 18 0 q9 8 18 0"],
+    too_dark: ["M100 114 l32 -4", "M168 110 l32 4"],
   };
-  return <path d={paths[mood]} stroke={ink} strokeWidth={6} fill="none" strokeLinecap="round" />;
+  const brow = shapes[face];
+  if (!brow) return null;
+  return (
+    <g stroke={INK} strokeWidth={6} fill="none" strokeLinecap="round">
+      <path d={brow[0]} />
+      <path d={brow[1]} />
+    </g>
+  );
+}
+
+function Mouth({ face, speaking, level }: { face: Face; speaking: boolean; level: number }) {
+  if (speaking) {
+    const open = 6 + level * 22;
+    return (
+      <g>
+        <ellipse cx={150} cy={196} rx={20 + level * 6} ry={open} fill="#7a1f3d" stroke={INK} strokeWidth={5} />
+        {open > 12 && <ellipse cx={150} cy={196 + open * 0.45} rx={11} ry={open * 0.38} fill="#ff6f91" />}
+      </g>
+    );
+  }
+  switch (face) {
+    case "happy":
+    case "grateful": {
+      const w = face === "grateful" ? 40 : 32;
+      return (
+        <g>
+          <path d={`M${150 - w} 184 q${w} ${w * 1.4} ${w * 2} 0 z`} fill="#7a1f3d" stroke={INK} strokeWidth={5} strokeLinejoin="round" />
+          <path d={`M${150 - w * 0.5} ${184 + w * 0.42} q${w * 0.5} -10 ${w} 0 q-${w * 0.5} ${w * 0.25} -${w} 0`} fill="#ff6f91" />
+        </g>
+      );
+    }
+    case "thirsty":
+      return (
+        <g>
+          <ellipse cx={150} cy={198} rx={15} ry={12} fill="#7a1f3d" stroke={INK} strokeWidth={5} />
+          <path d="M140 202 q10 22 20 0 z" fill="#ff6f91" stroke={INK} strokeWidth={4} />
+        </g>
+      );
+    case "too_dark":
+      return <ellipse cx={150} cy={198} rx={9} ry={11} fill="#7a1f3d" stroke={INK} strokeWidth={5} />;
+    case "soggy":
+      return <path d="M126 200 q8 -10 16 0 q8 10 16 0 q8 -10 16 0" stroke={INK} strokeWidth={6} fill="none" strokeLinecap="round" />;
+    case "unwell":
+      return <path d="M130 206 q20 -18 40 0" stroke={INK} strokeWidth={6} fill="none" strokeLinecap="round" />;
+    case "sleepy":
+      return <path d="M138 194 q12 10 24 0" stroke={INK} strokeWidth={6} fill="none" strokeLinecap="round" />;
+    default:
+      return <path d="M136 198 h28" stroke={INK} strokeWidth={6} strokeLinecap="round" />;
+  }
 }
 
 interface Props {
-  mood: Mood;
+  face: Face;
   speaking: boolean;
   level: number;
+  listening?: boolean;
 }
 
-/** The plant: one face and body animation per mood, mouth driven by audio level. */
-export function PlantCharacter({ mood, speaking, level }: Props) {
-  const look = LOOKS[mood];
+const DESCRIPTIONS: Record<Face, string> = {
+  happy: "happy",
+  grateful: "very grateful",
+  thirsty: "thirsty",
+  soggy: "too wet",
+  too_dark: "in the dark",
+  sleepy: "asleep",
+  unwell: "unwell",
+  offline: "unable to feel its sensors",
+};
+
+/** The plant mascot: a glossy round head with a sprout, leaf arms and a polka-dot pot. */
+export function PlantCharacter({ face, speaking, level, listening }: Props) {
+  const [top, bottom] = SKIN[face];
+  const uid = useId().replace(/:/g, "");
+  const skinId = `skin-${uid}`;
+  const skin = `url(#${skinId})`;
+  const potId = `pot-${uid}`;
+  const soil = face === "soggy" ? "#3d4f6b" : face === "thirsty" ? "#b98a5a" : "#5b3a24";
   return (
-    <svg className={`plant anim-${look.animation}`} viewBox="0 0 240 340" role="img" aria-label={`The plant looks ${mood.replace("_", " ")}`}>
-      {/* pot */}
-      <path d="M58 262 h124 l-12 70 h-100 z" fill="#c8693f" />
-      <rect x={50} y={248} width={140} height={22} rx={8} fill="#de7d50" />
-      <ellipse cx={120} cy={250} rx={62} ry={7} fill="#5a3b26" />
+    <svg
+      className={`character face-${face} ${speaking ? "is-speaking" : ""} ${listening ? "is-listening" : ""}`}
+      viewBox="0 0 300 380"
+      role="img"
+      aria-label={`The plant looks ${DESCRIPTIONS[face]}`}
+    >
+      <defs>
+        <linearGradient id={skinId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={top} />
+          <stop offset="100%" stopColor={bottom} />
+        </linearGradient>
+        <linearGradient id={potId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ff8a5b" />
+          <stop offset="100%" stopColor="#f2574a" />
+        </linearGradient>
+      </defs>
 
-      <g className="plant-body">
-        {/* stem and side leaves */}
-        <path d="M120 250 C118 225 122 210 120 190" stroke={look.leafDark} strokeWidth={10} fill="none" strokeLinecap="round" />
-        <g style={{ transform: `rotate(${look.leafTilt}deg)`, transformOrigin: "118px 228px", transition: "transform 0.8s" }}>
-          <path d="M118 228 C90 200 52 206 34 226 C58 246 96 246 118 228 z" fill={look.leaf} />
-          <path d="M118 228 C92 222 66 222 40 226" stroke={look.leafDark} strokeWidth={3} fill="none" />
-        </g>
-        <g style={{ transform: `rotate(${-look.leafTilt}deg)`, transformOrigin: "122px 228px", transition: "transform 0.8s" }}>
-          <path d="M122 228 C150 200 188 206 206 226 C182 246 144 246 122 228 z" fill={look.leaf} />
-          <path d="M122 228 C148 222 174 222 200 226" stroke={look.leafDark} strokeWidth={3} fill="none" />
+      <ellipse className="ground-shadow" cx={150} cy={366} rx={92} ry={11} fill="rgba(43,26,74,0.22)" />
+
+      <g className="char-body">
+        {/* pot */}
+        <g className="pot">
+          <path d="M84 276 h132 l-14 84 q-2 10 -12 10 h-80 q-10 0 -12 -10 z" fill={`url(#${potId})`} stroke={INK} strokeWidth={6} strokeLinejoin="round" />
+          <g fill="#fff" opacity={0.85}>
+            <circle cx={112} cy={312} r={6} />
+            <circle cx={150} cy={330} r={7} />
+            <circle cx={188} cy={310} r={6} />
+            <circle cx={130} cy={350} r={4} />
+            <circle cx={172} cy={350} r={4} />
+          </g>
+          <rect x={74} y={258} width={152} height={30} rx={14} fill="#ffb347" stroke={INK} strokeWidth={6} />
+          <ellipse cx={150} cy={262} rx={66} ry={8} fill={soil} />
         </g>
 
-        {/* head: a big round leaf with the face */}
-        <g className="plant-head">
-          <path d="M120 20 C60 30 34 80 36 130 C40 180 80 200 120 200 C160 200 200 180 204 130 C206 80 180 30 120 20 z" fill={look.face} stroke={look.leafDark} strokeWidth={5} style={{ transition: "fill 0.8s" }} />
-          <path d="M120 22 C116 10 124 2 134 0" stroke={look.leafDark} strokeWidth={5} fill="none" strokeLinecap="round" />
-          {mood === "unwell" && (
-            <g fill="#a07a2c" opacity={0.55}>
-              <circle cx={64} cy={84} r={8} />
-              <circle cx={178} cy={150} r={6} />
-              <circle cx={170} cy={70} r={5} />
+        {/* stem and leaf arms */}
+        <path d="M150 262 C148 246 152 236 150 222" stroke={INK} strokeWidth={16} fill="none" strokeLinecap="round" />
+        <path d="M150 262 C148 246 152 236 150 222" stroke={bottom} strokeWidth={8} fill="none" strokeLinecap="round" />
+        <g className="arm arm-left">
+          <path d="M146 244 C118 214 76 220 58 240 C84 262 124 262 146 244 z" fill={skin} stroke={INK} strokeWidth={5} strokeLinejoin="round" />
+          <path d="M140 244 C116 236 90 236 66 240" stroke={INK} strokeWidth={3} fill="none" opacity={0.5} />
+        </g>
+        <g className="arm arm-right">
+          <path d="M154 244 C182 214 224 220 242 240 C216 262 176 262 154 244 z" fill={skin} stroke={INK} strokeWidth={5} strokeLinejoin="round" />
+          <path d="M160 244 C184 236 210 236 234 240" stroke={INK} strokeWidth={3} fill="none" opacity={0.5} />
+        </g>
+
+        {/* head */}
+        <g className="head">
+          <g className="sprout">
+            <path d="M150 44 C150 30 152 22 150 12" stroke={INK} strokeWidth={6} fill="none" strokeLinecap="round" />
+            <path d="M150 20 C132 2 110 6 104 18 C118 30 138 30 150 20 z" fill={skin} stroke={INK} strokeWidth={5} strokeLinejoin="round" />
+            <path d="M150 20 C168 2 190 6 196 18 C182 30 162 30 150 20 z" fill={skin} stroke={INK} strokeWidth={5} strokeLinejoin="round" />
+          </g>
+          <path d="M150 40 C82 40 52 92 54 146 C56 200 98 228 150 228 C202 228 244 200 246 146 C248 92 218 40 150 40 z" fill={skin} stroke={INK} strokeWidth={6} />
+          <ellipse cx={104} cy={86} rx={26} ry={14} fill="#fff" opacity={0.35} transform="rotate(-28 104 86)" />
+          {face !== "offline" && face !== "unwell" && (
+            <g fill="#ff7aa8" opacity={face === "sleepy" ? 0.4 : 0.6}>
+              <ellipse cx={86} cy={186} rx={16} ry={9} />
+              <ellipse cx={214} cy={186} rx={16} ry={9} />
             </g>
           )}
-          {(mood === "happy" || mood === "grateful") && (
-            <g fill="#ff8a80" opacity={0.55}>
-              <ellipse cx={62} cy={146} rx={14} ry={8} />
-              <ellipse cx={178} cy={146} rx={14} ry={8} />
+          <Brows face={face} />
+          <Eyes face={face} skin={skin} />
+          <Mouth face={face} speaking={speaking} level={level} />
+          {face === "thirsty" && <path className="sweat" d="M230 104 q10 16 0 24 q-10 -8 0 -24 z" fill="#5cc8ff" stroke={INK} strokeWidth={3} />}
+          {face === "unwell" && (
+            <g transform="rotate(-24 206 92)">
+              <rect x={184} y={84} width={44} height={16} rx={7} fill="#ffd8a8" stroke={INK} strokeWidth={4} />
+              <rect x={200} y={84} width={12} height={16} fill="#f5b97a" />
             </g>
           )}
-          <Eyes mood={mood} />
-          <Mouth mood={mood} speaking={speaking} level={level} />
-          {mood === "thirsty" && <path className="sweat" d="M186 92 q8 14 0 20 q-8 -6 0 -20 z" fill="#64b5f6" />}
+          {face === "sleepy" && (
+            <g className="zzz" fill="#fff" stroke={INK} strokeWidth={3} fontWeight={700} fontFamily="inherit">
+              <text x={222} y={70} fontSize={34}>Z</text>
+              <text x={250} y={40} fontSize={26}>z</text>
+              <text x={272} y={16} fontSize={20}>z</text>
+            </g>
+          )}
+          {face === "soggy" && (
+            <g className="drip" fill="#5cc8ff" stroke={INK} strokeWidth={3}>
+              <path d="M66 120 q8 13 0 19 q-8 -6 0 -19 z" />
+              <path d="M236 160 q7 11 0 16 q-7 -5 0 -16 z" />
+            </g>
+          )}
         </g>
       </g>
-
-      {mood === "grateful" && (
-        <g className="sparkles" fill="#ffca28">
-          <path d="M24 60 l5 12 l12 5 l-12 5 l-5 12 l-5 -12 l-12 -5 l12 -5 z" />
-          <path d="M212 40 l4 9 l9 4 l-9 4 l-4 9 l-4 -9 l-9 -4 l9 -4 z" />
-          <path d="M222 170 l4 9 l9 4 l-9 4 l-4 9 l-4 -9 l-9 -4 l9 -4 z" />
-        </g>
-      )}
-      {mood === "too_dark" && <text x={196} y={40} fontSize={28} fill="#5c6bc0">z</text>}
     </svg>
   );
 }

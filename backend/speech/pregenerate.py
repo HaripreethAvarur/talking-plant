@@ -4,8 +4,6 @@ Run once with a real ELEVENLABS_API_KEY, before going on stage:
     python -m backend.speech.pregenerate
 """
 
-from __future__ import annotations
-
 import asyncio
 import sys
 

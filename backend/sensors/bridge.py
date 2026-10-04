@@ -1,4 +1,8 @@
-"""Native macOS bridge. BACKEND_URL points at local Docker or a remote HTTPS backend."""
+"""Laptop-side sensor bridge: posts readings to the backend at BACKEND_URL.
+
+Modes: mock (simulator scenarios), replay (a recorded fixture), arduino (the real
+board over USB) and arduino-mock (simulated hub frames through the same decoder).
+"""
 
 import argparse
 import asyncio
@@ -11,15 +15,8 @@ from uuid import uuid4
 import httpx
 from dotenv import load_dotenv
 
-from backend.sensors.calibration import Calibration
-from backend.sensors.freewili_adapter import (
-    FreeWiliAdapter,
-    HardwareConfig,
-    HardwareSetupError,
-    MeasurementUnavailable,
-)
 from backend.sensors.simulator import SCENARIOS, scenario_reading
-from shared.contracts import Light, Moisture, SensorReading, Source, Status, utcnow
+from shared.contracts import SensorReading, Source, utcnow
 
 
 async def publish(client, path, observation):
@@ -75,121 +72,47 @@ def validate_backend_url(url):
         raise ValueError("Use HTTPS for remote ingestion (or localhost for the local demo).")
 
 
+def report(result):
+    """Print the backend's answer to one posted observation (one JSON line)."""
+    if result:
+        keys = ("status", "event_id", "events")
+        print(json.dumps({key: result[key] for key in keys}), flush=True)
+
+
 async def run(args):
     backend_url = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
     token = os.getenv("INGESTION_TOKEN", "")
     validate_backend_url(backend_url)
     headers = {"Authorization": f"Bearer {token}"} if token else {}
-    adapter = None
-    if args.mode == "freewili":
-        calibration = (
-            Calibration.model_validate_json(args.calibration.read_text())
-            if args.calibration.exists()
-            else None
-        )
-        adapter = FreeWiliAdapter(
-            HardwareConfig(args.device, args.board_version, args.firmware_version, args.sdk_family),
-            calibration,
-        )
-    try:
-        async with httpx.AsyncClient(
-            base_url=backend_url, headers=headers, timeout=5, follow_redirects=False
-        ) as client:
-            if args.mode in ("arduino", "arduino-mock"):
-                from backend.sensors.arduino import run as run_arduino
+    async with httpx.AsyncClient(
+        base_url=backend_url, headers=headers, timeout=5, follow_redirects=False
+    ) as client:
+        if args.mode in ("arduino", "arduino-mock"):
+            from backend.sensors.arduino import run as run_arduino
 
-                await run_arduino(client, args)
-                return
-            if args.mode == "replay":
-                rows = replay_rows(args.fixture, args.plant_id)
-                previous = rows[0].timestamp
-                for row in rows:
-                    await asyncio.sleep(max(0, (row.timestamp - previous).total_seconds()))
-                    previous = row.timestamp
-                    # Preserve fixture intervals, rebase to wall time to account for HTTP latency.
-                    row.timestamp = utcnow()
-                    result = await publish(client, "/api/v1/sensor-readings", row)
-                    if result:
-                        print(
-                            json.dumps(
-                                {
-                                    "status": result["status"],
-                                    "event_id": result["event_id"],
-                                    "events": result["events"],
-                                }
-                            )
-                        )
-                return
+            await run_arduino(client, args)
+        elif args.mode == "replay":
+            rows = replay_rows(args.fixture, args.plant_id)
+            previous = rows[0].timestamp
+            for row in rows:
+                await asyncio.sleep(max(0, (row.timestamp - previous).total_seconds()))
+                previous = row.timestamp
+                # Preserve fixture intervals, rebase to wall time to account for HTTP latency.
+                row.timestamp = utcnow()
+                report(await publish(client, "/api/v1/sensor-readings", row))
+        else:
             step = 0
             while args.count == 0 or step < args.count:
-                if adapter:
-                    try:
-                        if adapter.device is None:
-                            await asyncio.to_thread(adapter.connect)
-                        readings = {}
-                        for name, method, model in (
-                            ("moisture", adapter.read_moisture, Moisture),
-                            ("light", adapter.read_light, Light),
-                        ):
-                            try:
-                                readings[name] = await asyncio.to_thread(method)
-                            except MeasurementUnavailable as exc:
-                                if step == 0:
-                                    print(str(exc))
-                                readings[name] = model(status=Status.missing)
-                        reading = SensorReading(
-                            plant_id=args.plant_id,
-                            source=Source.hardware,
-                            device_id=args.device or "selected-freewili",
-                            **readings,
-                        )
-                    except HardwareSetupError:
-                        raise
-                    except Exception as exc:
-                        print(
-                            f"Hardware disconnected ({type(exc).__name__}); reconnect in {args.reconnect_seconds}s."
-                        )
-                        try:
-                            await asyncio.to_thread(adapter.cleanup)
-                        except Exception:
-                            pass
-                        reading = SensorReading(
-                            plant_id=args.plant_id,
-                            source=Source.hardware,
-                            device_id=args.device or "selected-freewili",
-                            moisture=Moisture(status=Status.disconnected),
-                            light=Light(status=Status.disconnected),
-                        )
-                        await publish(client, "/api/v1/sensor-readings", reading)
-                        step += 1
-                        await asyncio.sleep(args.reconnect_seconds)
-                        continue
-                else:
-                    reading = scenario_reading(args.scenario, step, args.plant_id)
-                result = await publish(client, "/api/v1/sensor-readings", reading)
-                if result:
-                    print(
-                        json.dumps(
-                            {
-                                "status": result["status"],
-                                "event_id": result["event_id"],
-                                "events": result["events"],
-                            }
-                        )
-                    )
+                reading = scenario_reading(args.scenario, step, args.plant_id)
+                report(await publish(client, "/api/v1/sensor-readings", reading))
                 step += 1
                 await asyncio.sleep(args.interval)
-    finally:
-        if adapter:
-            await asyncio.to_thread(adapter.cleanup)
 
 
 def main():
     load_dotenv()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--mode", choices=["mock", "replay", "freewili", "arduino", "arduino-mock"], default="mock"
-    )
+    parser.add_argument("--mode", choices=["mock", "replay", "arduino", "arduino-mock"], default="mock")
     parser.add_argument("--port", default=os.getenv("ARDUINO_PORT", ""))
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--scenario", choices=SCENARIOS, default="healthy")
@@ -197,12 +120,6 @@ def main():
     parser.add_argument("--interval", type=float, default=1)
     parser.add_argument("--count", type=int, default=0, help="0 means continuously")
     parser.add_argument("--fixture", type=Path, default=Path("shared/fixtures/dry-to-watered.jsonl"))
-    parser.add_argument("--device", default=os.getenv("FREEWILI_DEVICE", ""))
-    parser.add_argument("--board-version", default=os.getenv("FREEWILI_BOARD_VERSION", ""))
-    parser.add_argument("--firmware-version", default=os.getenv("FREEWILI_FIRMWARE_VERSION", ""))
-    parser.add_argument(
-        "--sdk-family", choices=["legacy", "onewili"], default=os.getenv("FREEWILI_SDK_FAMILY", "legacy")
-    )
     parser.add_argument(
         "--calibration", type=Path, default=Path(os.getenv("CALIBRATION_PATH", "config/calibration.json"))
     )

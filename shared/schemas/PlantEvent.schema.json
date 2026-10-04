@@ -4,12 +4,9 @@
       "enum": [
         "happy",
         "thirsty",
+        "soggy",
         "too_dark",
-        "unwell",
-        "grateful",
-        "happy",
-        "thirsty",
-        "too_dark",
+        "sleepy",
         "unwell",
         "grateful"
       ],

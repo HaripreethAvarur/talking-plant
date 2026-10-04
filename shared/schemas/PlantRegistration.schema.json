@@ -1,0 +1,57 @@
+{
+  "$defs": {
+    "PlantType": {
+      "description": "Moisture needs differ by category; per-species thresholds aren't publicly available.",
+      "enum": [
+        "succulent",
+        "plant",
+        "tree"
+      ],
+      "title": "PlantType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One row per kid and plant. No login: the username is the identity.",
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "username": {
+      "pattern": "^[A-Za-z0-9_.-]{2,32}$",
+      "title": "Username",
+      "type": "string"
+    },
+    "plant_name": {
+      "maxLength": 40,
+      "minLength": 1,
+      "title": "Plant Name",
+      "type": "string"
+    },
+    "plant_type": {
+      "$ref": "#/$defs/PlantType"
+    },
+    "location": {
+      "description": "US ZIP code, used for local air quality",
+      "pattern": "^\\d{5}$",
+      "title": "Location",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "username",
+    "plant_name",
+    "plant_type",
+    "location"
+  ],
+  "title": "PlantRegistration",
+  "type": "object"
+}

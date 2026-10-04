@@ -1,16 +1,14 @@
-# Person 2 integration (schema 1.0)
+# Backend API and contracts (schema 1.0)
 
-The merged frontend and existing conversation/speech modules now share the canonical
-backend. `backend/ui.py` translates state and care events for the existing `/ws` UI;
-`backend/server.py` is a compatibility entrypoint. The user authorized the frontend
-touch handler; conversation/speech source ownership remains with Person 2.
+One backend process (`python -m backend.server`, or `create_app` in `backend/api.py`)
+serves the sensor API below and, through `backend/ui.py`, the React frontend's routes.
 
-## Existing React frontend
+## React frontend routes
 
 Run Vite on localhost:5173. It proxies `/api`, `/ws`, and `/audio` to `BACKEND_URL`
 from the root `.env` (restart Vite after changes). `/ws` sends `plant_state`,
 `speech_audio`, and `listen_request` messages. `/api/health` reports speech support;
-`/api/stt` accepts a capped audio clip and returns the existing UI utterance shape.
+`/api/stt` accepts a capped audio clip and returns a `ChildUtterance`.
 The frontend forwards that transcript on `/ws` for a reply grounded in live state
 and recent stored care events. Blank keys preserve on-screen question fallbacks.
 
@@ -29,8 +27,26 @@ Full `/ws/plants/plant-1` messages also include optional `state.touch`.
 For a token-protected demo, the UI reads `plantViewerToken` from sessionStorage;
 set it at runtime using browser developer tools, then reload. Do not put the ingestion
 token in the browser. No login screen is included. Local mode needs no tokens.
-`/api/plant-state` remains a demo-only, unpersisted compatibility override.
 The detailed API described below remains available alongside these UI routes.
+
+## Sign-up, care log and leaderboard
+
+| Route | Auth | What it does |
+|---|---|---|
+| `POST /api/plant` | viewer | Register the kid's plant (`PlantRegistration`); the profile takes its name and moisture bands |
+| `GET /api/plant` | viewer | The registration, or 404 before sign-up |
+| `GET /api/v1/care-log` | viewer | The last 24 care-log rows (`HourlyReading`), oldest first |
+| `POST /api/v1/care-log/log-now` | ingestion | Record a row now (409 before sign-up) |
+| `POST /api/v1/care-log/label-day?day=YYYY-MM-DD` | ingestion | Label a local day (default today) and purge old data |
+| `GET /api/leaderboard?limit=20` | viewer | `{days, you, entries: LeaderboardEntry[]}`; 503 without a database |
+| `POST /api/wake` | viewer | The UI heard "Hi <name>": greet and send a `listen_request`, like a touch (10 s cooldown) |
+| `GET /api/location/zip?lat=&lon=` | viewer | US ZIP code for the browser's location (OpenStreetMap); 404 outside the US |
+
+`/api/health` also reports `registered`, `username`, `database`, `demo_mode` and the
+plant's `thresholds` (`dry`, `soggy` moisture %). `plant_state` frames carry `air_aqi`,
+`looks` / `looks_at` (the latest photo description) and `checkup_mood`, and are re-sent
+whenever the care log records something. `GET /context` includes `hourly`, the
+same rows the chat uses.
 
 ## Connections
 
@@ -104,17 +120,18 @@ socket.onmessage = ({data}) => {
   for (const event of message.events) {
     if (seen.has(event.event_id)) continue;
     seen.add(event.event_id);
-    if (event.suggested_text) queuePlantSpeech(event); // Person 2 owns wording and voice.
+    if (event.suggested_text) queuePlantSpeech(event);
   }
 };
 ```
 
-Dry soil produces a `mood_changed` event with mood `thirsty`, reason, and suggestion
-`I'm thirsty.`. A sustained moisture rise produces a silent `mood_changed` to `grateful`
-plus one `watering` event suggesting `Thank you.`. Speak from **events with a non-null
+Dry soil produces a `mood_changed` event with mood `thirsty`, a reason, and the thirsty
+line from `MOOD_LINES` in `backend/conversation/scripted.py`. A sustained moisture rise
+produces a silent `mood_changed` to `grateful` plus one `watering` event carrying the
+grateful line. Speak from **events with a non-null
 suggested_text**, never directly from repeated mood/state updates. Event IDs are UUIDs,
 and `observation_id` links a derived event to the originating reading. Timer events use
-`source=backend` and may have no observation ID. Final scripts remain your choice.
+`source=backend` and may have no observation ID. All wording lives in `scripted.py`.
 
 Reconnect gets current state, not an automatic backlog. Fetch `/history` (newest first,
 limit 1–1000, offset pagination), filter `record_type` to `mood_changed`/`watering`, and
@@ -134,11 +151,17 @@ JSON schemas are in `shared/schemas/`; exact sample JSON is in `shared/samples/`
 | LeafObservation | Observation identity, status, selected region, method, nullable yellow/brown pixel proportions, limitations |
 | PlantState | Stable mood, reason, independent sensor_health, nullable readings, smoothed relative moisture, last_sensor_at, last_event_id, optional leaf |
 | PlantEvent | UUID, timestamp, plant_id, source, kind, mood, reason, nullable suggested_text and observation_id |
-| ChildUtterance | Validated integration-only transcript envelope with identity, source, language and text; no Person 1 endpoint processes it |
 | ConversationContext | Profile, current state, recent 20 events and integration guidance |
 | StreamMessage | Snapshot/update envelope with state and events |
+| UIPlantState | `/ws` frame for the UI: mood, optional message, moisture/light %, leaf_issues (null when the camera has no recent look), sensor health |
+| SpeechAudio | `/ws` frame: text plus a cached `/audio/...` URL, or null for browser speech |
+| ChildUtterance | Sent by the UI on `/ws`: question text and source (`stt`, `button`, `typed`) |
+| ListenRequest | `/ws` frame asking the first UI to record for `duration_ms` after a touch |
+| PlantRegistration | A kid's plant: username (the identity, no login), plant name, type (`succulent`, `plant`, `tree`), US ZIP |
+| HourlyReading | One hour of the care log: sun %, water %, air AQI, Ollama's health text, ASI's mood label, and `day_mood` on the day's last row |
+| LeaderboardEntry | Rank, plant, and happy days in the last 7 (score = happy days / 7) |
 
-Every contract has `schema_version="1.0"`; unknown fields/versions are rejected. Timestamps
+Every sensor-side contract has `schema_version="1.0"`; unknown fields/versions are rejected. Timestamps
 must include a timezone. `source` distinguishes mock, replay, hardware, image_file and backend;
 sensor and touch observations allow only the first three. Missing measurements are null with a status,
 never invented zeroes. Zero is valid only with `status=ok` (e.g. actual zero light).
@@ -154,5 +177,17 @@ remain. Leaf proportions describe color pixels, not disease diagnoses, wilting, 
 probabilities. Raw images are not accepted/stored. `/api/stt` forwards capped audio
 for transcription without storing it in our database.
 
-`GET /context` is the context input for your conversation pipeline; `ChildUtterance` is the
-agreed transcript shape, not an implementation of that pipeline. `/docs` provides OpenAPI.
+`GET /context` returns the profile, state and recent events used for replies. `/docs`
+provides OpenAPI.
+
+## Database tables
+
+Migration 1 (live pipeline): `plant_profiles`, `care_records` (every observation and
+event as JSON) and `plant_checkpoints`. Migration 2 (care log): `plants`, keyed by
+username, and `hourly_readings`, one row per plant per hour, unique on
+`(username, hour)` and deleted with its plant.
+
+`Store.purge(now)` keeps 30 days of hourly rows and care events, and 24 hours of raw
+per-second sensor, touch and leaf records (they only need to outlive restart
+de-duplication). The leaderboard counts days whose `day_mood` is `happy`
+within the last 7 days; plants with equal counts share a rank.

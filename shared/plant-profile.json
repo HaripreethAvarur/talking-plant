@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "plant_id": "plant-1",
   "name": "Sprout",
-  "species": "Unspecified demo plant",
+  "species": "pothos",
   "thresholds": {
     "schema_version": "1.0",
     "dry_enter": 30.0,
@@ -23,6 +23,14 @@
     "leaf_color_enter": 0.35,
     "leaf_color_exit": 0.25,
     "leaf_confirmations": 2,
-    "leaf_stale_seconds": 300.0
-  }
+    "leaf_stale_seconds": 300.0,
+    "soggy_enter": 90.0,
+    "soggy_exit": 80.0,
+    "soggy_seconds": 120.0,
+    "night_start_hour": 21,
+    "night_end_hour": 7
+  },
+  "username": null,
+  "plant_type": "plant",
+  "timezone": "America/Detroit"
 }

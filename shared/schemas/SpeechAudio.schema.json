@@ -1,0 +1,46 @@
+{
+  "description": "Produced by the plant voice (TTS) and played by the UI.\n\naudio_url is None when TTS is unavailable and the line is not cached;\nthe UI then falls back to the browser's built-in speech synthesis.",
+  "properties": {
+    "type": {
+      "const": "speech_audio",
+      "default": "speech_audio",
+      "title": "Type",
+      "type": "string"
+    },
+    "text": {
+      "title": "Text",
+      "type": "string"
+    },
+    "audio_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Audio Url"
+    },
+    "mime": {
+      "default": "audio/mpeg",
+      "title": "Mime",
+      "type": "string"
+    },
+    "cached": {
+      "default": false,
+      "title": "Cached",
+      "type": "boolean"
+    },
+    "ts": {
+      "title": "Ts",
+      "type": "number"
+    }
+  },
+  "required": [
+    "text"
+  ],
+  "title": "SpeechAudio",
+  "type": "object"
+}

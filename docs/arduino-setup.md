@@ -2,7 +2,8 @@
 
 The selected path is **sensors → UNO R4 WiFi → USB → laptop bridge → backend/database
 → React frontend**. The webcam and microphone connect directly to the laptop.
-The WiFi radio, FreeWILi, Raspberry Pi, Alexa, buzzer and LCD are not needed for this path.
+The WiFi radio, Raspberry Pi, Alexa, buzzer and LCD are not needed for this path.
+An optional LED on D4 lights while the plant is thirsty, too dark or unwell.
 
 ## 1. Jumper wiring
 
@@ -15,6 +16,7 @@ With individual jumper wires, color alone does not identify a pin.
 | Moisture v1.4 | 5V | GND | A0 |
 | Light v1.2 | 5V | GND | A1 |
 | Touch v1.1 | 5V | GND | D2 |
+| LED (optional, with resistor) | — | GND | D4 |
 
 All three need common ground and a shared 5V supply. A breadboard or suitable power
 splitter distributes 5V/GND when no Grove shield is present; don't force several
@@ -23,25 +25,23 @@ Keep moisture-board electronics above the soil/water; only the probe goes into s
 The touch module is active-high in its default configuration. Mount its sensing pad
 where the child can pat it: touching an arbitrary leaf does not necessarily activate it.
 
-These assignments are our firmware configuration. See the manufacturers' documents:
+These assignments are set at the top of the sketch. See the manufacturers' documents:
 [Touch sensor](https://wiki.seeedstudio.com/Grove-Touch_Sensor/),
 [Light sensor, including v1.2](https://wiki.seeedstudio.com/Grove-Light_Sensor/),
 [Moisture sensor, including v1.4 schematic](https://wiki.seeedstudio.com/Grove-Moisture_Sensor/),
 and [UNO R4 WiFi](https://docs.arduino.cc/tutorials/uno-r4-wifi/cheat-sheet/).
 Verify the labels against your actual modules before wiring.
 
-## 2. Upload the firmware
+## 2. Upload the sketch
 
-Open `firmware/talking_plant/talking_plant.ino` in Arduino IDE. Install the Arduino
-UNO R4 board package, select **Arduino UNO R4 WiFi** and the board's USB port, then
-upload. Close Serial Monitor before starting the Python bridge.
-The sketch was compile-checked with Arduino CLI 1.5.1 and `arduino:renesas_uno` 1.6.0
-for `arduino:renesas_uno:unor4wifi`; it has not been flashed or physically tested here.
+Open `hardware/talking_plant_hub/talking_plant_hub.ino` in Arduino IDE. Install the
+Arduino UNO R4 board package, select **Arduino UNO R4 WiFi** and the board's USB port,
+then upload. Close Serial Monitor before starting the Python bridge.
 
 ```sh
 make install-arduino
-make arduino-devices
-make arduino-devices ARGS='--inspect --port /dev/cu.usbmodemYOUR_PORT --count 10'
+make arduino-devices                                            # list ports
+make arduino-devices ARGS='--inspect --port COM3 --count 10'    # print decoded frames
 ```
 
 Use your enumerated port, not the example string. Windows uses a COM port; Linux
@@ -61,7 +61,7 @@ make calibrate ARGS='--dry DRY_VALUE --wet WET_VALUE --sensor-model "Grove moist
 ```
 
 This writes ignored `config/calibration.json`. Restart the Arduino bridge after
-changing it. Calibration must match the firmware's device ID. Without it, readings
+changing it. Calibration must use the device ID `arduino-plant-1`. Without it, readings
 are stored as `uncalibrated`, raw values remain available, and the UI water gauge
 is unknown. The resulting percentage is a relative dry-to-wet scale, not volumetric
 soil water content. Mock mode uses its own clearly simulated calibration.
@@ -82,7 +82,7 @@ docker compose restart backend
 
 This replaces the saved profile, including its name and other thresholds, so edit
 those fields first if customized. It preserves care history. For native use:
-`.venv/bin/python -m scripts.profile shared/plant-profile.json`, then restart backend.
+`python -m scripts.profile shared/plant-profile.json`, then restart the backend.
 
 ## 4. Start the pipeline
 
@@ -105,8 +105,9 @@ the browser/OS input. Set your JBL speaker as the output if desired. Touch the p
 3. It stops the microphone tracks and submits the clip to the existing `/api/stt`.
 4. The transcript goes through the existing conversation and TTS flow.
 
-There is no spoken greeting before recording, to avoid recording the plant's own
-voice. The visible “Listening…” prompt is the cue to speak. Holding the pad produces
+The plant first says "Hi there! What would you like to know?", and the browser starts
+recording once that line has played, so the plant's own voice isn't recorded.
+The visible “Listening…” prompt is the cue to speak. Holding the pad produces
 one trigger; a new pat needs a release and the default ten-second cooldown. Hidden
 or disconnected tabs cancel recording. Reloading requires the wake action again.
 Keep only the intended listening tab connected: the server routes touch to its first
@@ -134,30 +135,26 @@ background/lighting can mislead it. It reports unavailable/error when capture fa
 
 ## USB protocol and storage
 
-Our firmware uses 115200 baud and newline-delimited JSON. It waits for the host's
-`START <uuid>` command; the serial adapter sends that automatically. To inspect via
-Serial Monitor instead, select newline termination and send e.g.
-`START 11111111-1111-4111-8111-111111111111` (then close Monitor before the bridge).
-
-A sensor heartbeat is sent every second; debounced touch edges are sent immediately:
+The sketch uses 115200 baud and newline-delimited JSON. It sends one line every second,
+and immediately whenever the touch pad changes. Analog values are an average of 8 reads:
 
 ```json
-{"protocol":"talking-plant/1","type":"sensor","device_id":"arduino-plant-1","session_id":"11111111-1111-4111-8111-111111111111","sequence":0,"uptime_ms":1234,"moisture_raw":290,"light_raw":600,"touch":false}
+{"moisture_raw":290,"light_raw":600,"touch":0}
 ```
 
-A `type: "touch"` frame has the same identity/timing/touch fields and omits both ADC
-fields. Firmware debounce is 40 ms. The adapter reconstructs capture timestamps
-from board uptime, rejects old sessions/duplicate sequences, and generates stable
-observation IDs for retries. On reconnect it creates a new session, and an initially
-held pad must be released before it can trigger. No frames for five seconds causes
-a disconnected observation and reconnect attempts. A pulled analog sensor lead can
-float while the board still reports numbers; this cannot prove individual wiring
-health and must be checked physically.
+Anything that isn't a valid frame (for example a boot message) is ignored. The board has
+no clock or ID, so the laptop timestamps each line on arrival, starts a new session on
+every (re)connect, and derives stable observation IDs from that session for retries.
+No valid frame for five seconds causes a disconnected observation and reconnect attempts.
+A pulled analog lead can float while the board still reports numbers; check wiring
+physically.
 
-Existing `care_records` store `sensor`, `touch_observation`, derived `touch`, and
-`leaf` records as JSON; checkpoints preserve state and cooldown. No database column
-migration is needed. `/ws/plants/plant-1` exposes full state/events, while `/ws`
-serves the current frontend. The existing speech/conversation source was reused.
+The laptop can send `{"mood":"thirsty","text":"..."}` back; the sketch lights the D4 LED
+for thirsty, too dark or unwell (`ArduinoSerialAdapter.write_mood`).
+
+`care_records` store `sensor`, `touch_observation`, derived `touch`, and `leaf` records
+as JSON; checkpoints preserve state and cooldowns. `/ws/plants/plant-1` exposes full
+state and events, while `/ws` serves the React frontend.
 
 ## Physical acceptance checklist
 

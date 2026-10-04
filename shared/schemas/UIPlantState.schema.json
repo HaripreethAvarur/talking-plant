@@ -1,0 +1,180 @@
+{
+  "$defs": {
+    "Mood": {
+      "enum": [
+        "happy",
+        "thirsty",
+        "soggy",
+        "too_dark",
+        "sleepy",
+        "unwell",
+        "grateful"
+      ],
+      "title": "Mood",
+      "type": "string"
+    },
+    "Status": {
+      "enum": [
+        "ok",
+        "missing",
+        "disconnected",
+        "stale",
+        "error",
+        "uncalibrated"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "description": "What the plant's face, gauges and speech bubble show; also the input to replies.",
+  "properties": {
+    "type": {
+      "const": "plant_state",
+      "default": "plant_state",
+      "title": "Type",
+      "type": "string"
+    },
+    "mood": {
+      "$ref": "#/$defs/Mood"
+    },
+    "message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "moisture_pct": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Moisture Pct"
+    },
+    "light_pct": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Light Pct"
+    },
+    "leaf_issues": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Leaf Issues"
+    },
+    "looks": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Looks"
+    },
+    "looks_at": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Looks At"
+    },
+    "air_aqi": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Air Aqi"
+    },
+    "checkup_mood": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Mood"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "ts": {
+      "title": "Ts",
+      "type": "number"
+    },
+    "sensor_health": {
+      "$ref": "#/$defs/Status",
+      "default": "missing"
+    },
+    "light_unit": {
+      "anyOf": [
+        {
+          "enum": [
+            "lux",
+            "raw"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Light Unit"
+    },
+    "light_value": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Light Value"
+    }
+  },
+  "required": [
+    "mood"
+  ],
+  "title": "UIPlantState",
+  "type": "object"
+}

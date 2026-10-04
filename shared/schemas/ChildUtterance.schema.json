@@ -1,71 +1,32 @@
 {
-  "additionalProperties": false,
+  "description": "A child's question from the UI: transcribed speech or a tapped question button.",
   "properties": {
-    "schema_version": {
-      "const": "1.0",
-      "default": "1.0",
-      "title": "Schema Version",
+    "type": {
+      "const": "child_utterance",
+      "default": "child_utterance",
+      "title": "Type",
       "type": "string"
     },
-    "event_id": {
-      "format": "uuid",
-      "title": "Event Id",
-      "type": "string"
-    },
-    "plant_id": {
-      "default": "plant-1",
-      "pattern": "^[a-zA-Z0-9_-]{1,64}$",
-      "title": "Plant Id",
-      "type": "string"
-    },
-    "timestamp": {
-      "format": "date-time",
-      "title": "Timestamp",
+    "text": {
+      "title": "Text",
       "type": "string"
     },
     "source": {
+      "default": "stt",
       "enum": [
-        "hardware",
-        "mock",
-        "replay"
+        "stt",
+        "button",
+        "typed"
       ],
       "title": "Source",
       "type": "string"
     },
-    "device_id": {
-      "default": "simulator",
-      "maxLength": 128,
-      "minLength": 1,
-      "title": "Device Id",
-      "type": "string"
-    },
-    "session_id": {
-      "anyOf": [
-        {
-          "format": "uuid",
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Session Id"
-    },
-    "text": {
-      "maxLength": 4000,
-      "minLength": 1,
-      "title": "Text",
-      "type": "string"
-    },
-    "language": {
-      "default": "en",
-      "title": "Language",
-      "type": "string"
+    "ts": {
+      "title": "Ts",
+      "type": "number"
     }
   },
   "required": [
-    "source",
     "text"
   ],
   "title": "ChildUtterance",

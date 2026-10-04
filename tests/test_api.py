@@ -7,7 +7,8 @@ from starlette.websockets import WebSocketDisconnect
 
 from backend.api import create_app
 from backend.config import Settings
-from shared.contracts import LeafObservation, Source, Status, utcnow
+from backend.conversation.scripted import MOOD_LINES
+from shared.contracts import LeafObservation, Mood, Source, Status, utcnow
 
 
 def test_live_contract_websocket_and_retry(settings, reading):
@@ -28,8 +29,8 @@ def test_live_contract_websocket_and_retry(settings, reading):
                 assert retry.json()["status"] == "duplicate"
                 assert retry.json()["events"] == []
             assert [e["suggested_text"] for e in events if e["suggested_text"]] == [
-                "I'm thirsty.",
-                "Thank you.",
+                MOOD_LINES[Mood.thirsty],
+                MOOD_LINES[Mood.grateful],
             ]
         context = client.get("/api/v1/plants/plant-1/context").json()
         assert context["profile"]["name"] == "Sprout"

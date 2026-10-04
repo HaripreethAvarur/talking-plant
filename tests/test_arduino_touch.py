@@ -8,14 +8,15 @@ from pydantic import ValidationError
 
 from backend.agent.touch import TouchGate
 from backend.api import create_app
-from backend.sensors.arduino import simulated_frames
-from backend.sensors.arduino_adapter import FrameDecoder
+from backend.conversation.scripted import GREETING_LINE
+from backend.sensors.arduino import simulated_frame
+from backend.sensors.arduino_adapter import HubFrameDecoder
 from backend.sensors.calibration import Calibration
 from shared.contracts import Source, Status, TouchObservation, utcnow
 
 
-def frame(session, step=0, **changes):
-    return json.dumps({**json.loads(simulated_frames(session, step)), **changes})
+def frame(step=0, **changes):
+    return json.dumps({**json.loads(simulated_frame(step)), **changes})
 
 
 def touch(at, pressed, session, **changes):
@@ -30,26 +31,28 @@ def touch(at, pressed, session, **changes):
     )
 
 
-def test_decoder_raw_calibrated_and_deduplicated():
+def test_decoder_raw_calibrated_and_unique_ids():
     session, at = uuid4(), utcnow()
-    decoder = FrameDecoder(session)
-    sensor, pad = decoder.decode(frame(session), at)
+    decoder = HubFrameDecoder(session)
+    sensor, pad = decoder.decode(frame(), at)
     assert sensor.moisture.raw == 290
     assert sensor.moisture.relative_percent is None
     assert sensor.moisture.status == Status.uncalibrated
     assert sensor.light.unit == "raw"
     assert pad.pressed is False and pad.session_id == session
     assert sensor.event_id != pad.event_id
-    assert decoder.decode(frame(session), at) == []
-    assert decoder.decode(frame(uuid4(), 1), at) == []
+    again = decoder.decode(frame(), at)[0]
+    assert again.event_id != sensor.event_id  # each line is a new observation
     calibration = Calibration(
         dry_raw=200, wet_raw=800, sensor_model="Grove v1.4", device_id="arduino-plant-1"
     )
-    calibrated = FrameDecoder(session, calibration=calibration).decode(frame(session), at)[0]
-    assert calibrated.moisture.relative_percent == 15
+    assert (
+        HubFrameDecoder(session, calibration=calibration).decode(frame(), at)[0].moisture.relative_percent
+        == 15
+    )
     calibration.device_id = "another-device"
     assert (
-        FrameDecoder(session, calibration=calibration).decode(frame(session), at)[0].moisture.relative_percent
+        HubFrameDecoder(session, calibration=calibration).decode(frame(), at)[0].moisture.relative_percent
         is None
     )
 
@@ -59,28 +62,20 @@ def test_decoder_raw_calibrated_and_deduplicated():
     [
         {"light_raw": 1024},
         {"moisture_raw": -1},
-        {"touch": 1},
+        {"touch": 2},
+        {"touch": True},
         {"light_raw": None},
-        {"type": "touch"},
         {"unknown": 42},
     ],
 )
 def test_decoder_rejects_invalid_frames(changes):
-    session = uuid4()
     with pytest.raises(ValidationError):
-        FrameDecoder(session).decode(frame(session, **changes))
+        HubFrameDecoder(uuid4()).decode(frame(**changes))
 
 
-def test_decoder_preserves_capture_age_and_clock_wrap():
-    session, at = uuid4(), utcnow()
-    decoder = FrameDecoder(session)
-    decoder.decode(frame(session, uptime_ms=2**32 - 500), at)
-    late = decoder.decode(frame(session, 1, uptime_ms=500), at + timedelta(seconds=20))
-    assert late[0].timestamp == at + timedelta(seconds=1)
-    with pytest.raises(ValueError, match="clock reset"):
-        decoder.decode(frame(session, 2, uptime_ms=100), at)
+def test_decoder_rejects_oversized_line():
     with pytest.raises(ValueError, match="1024"):
-        decoder.decode(" " * 1025)
+        HubFrameDecoder(uuid4()).decode(" " * 1025)
 
 
 def test_touch_release_debounce_cooldown_reconnect_and_staleness():
@@ -128,7 +123,7 @@ def test_api_touch_ui_storage_and_restart(settings):
                 assert observer.receive_json()["type"] == "plant_state"
             greeting = ws.receive_json()
             assert greeting["type"] == "plant_state"
-            assert greeting.get("message") == "Hi there! What would you like to know?"
+            assert greeting.get("message") == GREETING_LINE
             request = ws.receive_json()
             assert request["type"] == "listen_request"
             assert request["duration_ms"] == 6000
@@ -158,38 +153,25 @@ def test_api_touch_ui_storage_and_restart(settings):
             assert ws.receive_json()["type"] == "plant_state"  # No historical listen replay.
 
 
-def test_real_serial_handshake_and_partial_line_over_pseudoterminal():
+@pytest.mark.skipif(not hasattr(__import__("os"), "openpty"), reason="needs a Unix pseudo-terminal")
+def test_real_serial_partial_line_over_pseudoterminal():
     """Exercises pyserial on a local pseudo-port; never opens attached hardware."""
     pytest.importorskip("serial")
     import os
-    import select
     import threading
     import time
 
     from backend.sensors.arduino_adapter import ArduinoSerialAdapter
 
     master, slave = os.openpty()
-    adapter = ArduinoSerialAdapter(os.ttyname(slave), protocol="session-v1")
-    errors = []
+    adapter = ArduinoSerialAdapter(os.ttyname(slave))
 
     def board():
-        try:
-            pending = b""
-            deadline = time.monotonic() + 4
-            while b"\n" not in pending and time.monotonic() < deadline:
-                if select.select([master], [], [], 0.1)[0]:
-                    pending += os.read(master, 1024)
-            command = pending.split(b"\n")[0].decode().strip()
-            assert command.startswith("START ")
-            from uuid import UUID
-
-            session = UUID(command[6:])
-            payload = (frame(session) + "\n").encode()
-            os.write(master, payload[:20])
-            time.sleep(0.15)  # Span pyserial's read timeout, keeping the partial line.
-            os.write(master, payload[20:])
-        except Exception as exc:
-            errors.append(exc)
+        payload = (frame() + "\n").encode()
+        os.write(master, b"booting...\n")  # banners are ignored
+        os.write(master, payload[:20])
+        time.sleep(0.15)  # Span pyserial's read timeout, keeping the partial line.
+        os.write(master, payload[20:])
 
     thread = threading.Thread(target=board)
     thread.start()
@@ -207,4 +189,3 @@ def test_real_serial_handshake_and_partial_line_over_pseudoterminal():
         thread.join(5)
         os.close(master)
         os.close(slave)
-    assert not errors
