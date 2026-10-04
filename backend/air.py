@@ -1,7 +1,10 @@
-"""Outdoor air quality (US AQI) for a ZIP code, from free APIs that need no key.
+"""Place lookups and outdoor air quality, from free APIs that need no key.
 
-ZIP -> latitude/longitude via api.zippopotam.us, then the current US AQI from
-Open-Meteo's air-quality API. Results are cached; any failure returns None.
+- us_aqi(zip): ZIP -> latitude/longitude via api.zippopotam.us, then the current US AQI
+  from Open-Meteo's air-quality API (cached for 30 minutes).
+- zip_for(lat, lon): the browser's location -> a US ZIP code via OpenStreetMap Nominatim.
+
+Any failure returns None.
 """
 
 import logging
@@ -45,3 +48,30 @@ async def us_aqi(zip_code: str) -> float | None:
         return None
     _aqi[zip_code] = (time.monotonic(), float(value))
     return float(value)
+
+
+async def zip_for(latitude: float, longitude: float) -> str | None:
+    """The US ZIP code at a location (used by "use my current location" at sign-up)."""
+    try:
+        async with httpx.AsyncClient(
+            timeout=10, headers={"User-Agent": "talking-plant/1.0 (MHacks)"}
+        ) as client:
+            response = await client.get(
+                "https://nominatim.openstreetmap.org/reverse",
+                params={
+                    "lat": latitude,
+                    "lon": longitude,
+                    "format": "jsonv2",
+                    "zoom": 18,
+                    "addressdetails": 1,
+                },
+            )
+            response.raise_for_status()
+            address = response.json().get("address", {})
+    except (httpx.HTTPError, ValueError) as exc:
+        log.warning("Reverse geocoding failed: %s", exc)
+        return None
+    postcode = (address.get("postcode") or "")[:5]
+    if address.get("country_code") != "us" or not (len(postcode) == 5 and postcode.isdigit()):
+        return None
+    return postcode

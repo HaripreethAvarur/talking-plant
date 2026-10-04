@@ -33,8 +33,11 @@ python -m backend.sensors.bridge --mode arduino-mock --count 24   # terminal 3 (
 
 The first launch asks for the kid's name, the plant's name, its type (succulent,
 houseplant or tree, which sets its dry and soggy levels) and a ZIP code for local air.
-Then click **Tap to wake up** and allow the microphone. The simulated pat arrives after
-four seconds and the soil is "watered" after eight. `python -m scripts.touch` sends another pat
+A child can start a chat three ways: pat the touch sensor, say "Hi <plant name>!" (wake word,
+Chrome/Edge), or tap the big microphone button. Browsers keep sound and the microphone off
+until the page is tapped once; `python -m scripts.kiosk` opens the UI full screen with that
+turned off, so nothing needs a tap. The simulated pat arrives after four seconds and the soil
+is "watered" after eight. `python -m scripts.touch` sends another pat
 (allow ten seconds between pats). With blank speech/LLM keys the plant still works: the
 question buttons replace the microphone, replies come from scripted lines, and the
 browser's own voice speaks.
@@ -47,7 +50,8 @@ URL for the shared database. Blank keeps a bounded in-memory history.
 
 - `DEMO_MODE=true` and `LOG_INTERVAL_MINUTES=1` in `.env` make the stage run lively.
 - **Shift+D** opens hidden controls: force "dry then watered", dry, healthy or dark, log
-  a care row now, or label today. The 🏆 button opens the leaderboard.
+  a care row now, or label today. The 🏆 Leaderboard tab shows the weekly board.
+- `python -m scripts.kiosk` opens the UI full screen with sound and microphone allowed.
 - `python -m backend.speech.pregenerate` records every fixed line (done on this laptop),
   so the core lines play without internet.
 - The photo description needs Ollama with a vision model: `ollama pull llama3.2-vision`

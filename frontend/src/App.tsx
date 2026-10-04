@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import type { ChildUtterance, Face, Health, ListenRequest, SpeechAudio } from "./contracts";
+import { ChatFeed, type ChatMessage } from "./components/ChatFeed";
 import { DemoPanel } from "./components/DemoPanel";
-import { Gauge } from "./components/Gauge";
-import { LeaderboardPanel } from "./components/LeaderboardPanel";
+import { LeaderboardPage } from "./components/LeaderboardPage";
 import { PlantCharacter } from "./components/PlantCharacter";
+import { Scene } from "./components/Scene";
 import { SignUp } from "./components/SignUp";
-import { TalkPanel } from "./components/TalkPanel";
+import { StatCards } from "./components/StatCards";
+import { TalkDock } from "./components/TalkDock";
 import { usePlantSocket } from "./hooks/usePlantSocket";
 import { usePlantVoice } from "./hooks/usePlantVoice";
-import { usePushToTalk } from "./hooks/usePushToTalk";
+import { LISTEN_MS, usePushToTalk } from "./hooks/usePushToTalk";
+import { useWakeWord } from "./hooks/useWakeWord";
 
-const LIGHT_LOW = 20; // display only; the mood engine uses the profile's raw-light thresholds
 const OFFLINE_HEALTH = ["missing", "disconnected", "stale"];
+const MAX_MESSAGES = 30;
 
 const FALLBACK_HEALTH: Health = {
   stt: false,
@@ -22,12 +25,31 @@ const FALLBACK_HEALTH: Health = {
   quick_questions: ["Are you okay?", "What do you need?", "Do you like the sun?", "What's your name?"],
 };
 
+const CAPTIONS: Record<Face, string> = {
+  happy: "Feeling great!",
+  grateful: "Thank you!!",
+  thirsty: "So thirsty…",
+  soggy: "Too much water!",
+  too_dark: "It's too dark!",
+  sleepy: "Sleeping… zzz",
+  unwell: "Not feeling well",
+  offline: "Can't feel my roots",
+};
+
+type Tab = "plant" | "leaderboard";
+const tabFromHash = (): Tab => (location.hash === "#leaderboard" ? "leaderboard" : "plant");
+
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null);
-  const [plantLine, setPlantLine] = useState<string | null>(null);
-  const [childLine, setChildLine] = useState<string | null>(null);
-  const [showBoard, setShowBoard] = useState(false);
+  const [tab, setTab] = useState<Tab>(tabFromHash);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [waiting, setWaiting] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
+  const nextId = useRef(1);
+
+  const say = useCallback((from: ChatMessage["from"], text: string) => {
+    setMessages((list) => [...list, { id: nextId.current++, from, text }].slice(-MAX_MESSAGES));
+  }, []);
 
   const voice = usePlantVoice();
   const talkRef = useRef<ReturnType<typeof usePushToTalk> | null>(null);
@@ -41,10 +63,11 @@ export default function App() {
 
   const ask = useCallback(
     (text: string, source: ChildUtterance["source"]) => {
-      setChildLine(text);
+      say("kid", text);
+      setWaiting(true);
       sendUtterance(text, source);
     },
-    [sendUtterance],
+    [say, sendUtterance],
   );
   const talk = usePushToTalk(ask);
   talkRef.current = talk;
@@ -56,9 +79,37 @@ export default function App() {
   }, []);
   useEffect(loadHealth, [connected, loadHealth]);
 
+  // Every line the plant says goes into the chat.
   useEffect(() => {
-    if (state?.message) setPlantLine(state.message);
-  }, [state]);
+    if (state?.message) {
+      say("plant", state.message);
+      setWaiting(false);
+    }
+  }, [state, say]);
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setTimeout(() => setWaiting(false), 15000);
+    return () => clearTimeout(timer);
+  }, [waiting]);
+
+  // Tabs live in the URL hash so the browser's back button works.
+  useEffect(() => {
+    const sync = () => setTab(tabFromHash());
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+
+  // Browsers keep sound and the microphone off until the first tap or key press anywhere.
+  useEffect(() => {
+    if (voice.unlocked) return;
+    const wake = () => { void voice.unlock().then(() => talk.prepare()); };
+    window.addEventListener("pointerdown", wake, { once: true });
+    window.addEventListener("keydown", wake, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", wake);
+      window.removeEventListener("keydown", wake);
+    };
+  }, [voice.unlocked, voice.unlock, talk.prepare]);
 
   // Shift+D toggles the hidden demo controls.
   useEffect(() => {
@@ -72,62 +123,98 @@ export default function App() {
   }, []);
 
   const info = health ?? FALLBACK_HEALTH;
+  const name = info.plant.name;
   const offline = !state || OFFLINE_HEALTH.includes(state.sensor_health ?? "missing");
-  // An old line ("Thank you!") shouldn't linger once the sensors stop; later replies still show.
-  useEffect(() => { if (offline) setPlantLine(null); }, [offline]);
   const face: Face = offline ? "offline" : state.mood;
-  const needsSignUp = health?.registered === false;
+  const registered = health?.registered !== false;
+  const listening = talk.status === "listening";
+
+  const wake = useWakeWord(
+    name,
+    registered && voice.unlocked && connected && tab === "plant" && talk.status === "idle" && !voice.speaking,
+    () => { void api("/api/wake", { method: "POST" }); },
+  );
+
+  const onMic = () => {
+    if (listening) return talk.stop();
+    voice.stop();
+    void voice.unlock().then(() => talk.start(LISTEN_MS));
+  };
+
+  if (health && !health.registered) {
+    return (
+      <div className="app">
+        <Scene face="happy" />
+        <SignUp onDone={loadHealth} />
+      </div>
+    );
+  }
 
   return (
-    <main className={`app mood-${face}`}>
-      {needsSignUp && <SignUp onDone={loadHealth} />}
-      {!needsSignUp && !voice.unlocked && (
-        <button className="wake-overlay" onClick={async () => { await voice.unlock(); await talk.prepare(); }}>
-          <span className="wake-emoji" aria-hidden>🪴</span>
-          Tap to wake up {info.plant.name} and enable the microphone!
-        </button>
-      )}
-      {showBoard && <LeaderboardPanel onClose={() => setShowBoard(false)} />}
-      {showDemo && <DemoPanel demoMode={!!info.demo_mode} onClose={() => setShowDemo(false)} />}
+    <div className={`app face-${face}`}>
+      <Scene face={tab === "leaderboard" ? "happy" : face} />
 
-      <header className="top-bar">
-        <h1>{info.plant.name}</h1>
-        {info.database && (
-          <button className="board-button" onClick={() => setShowBoard(true)} aria-label="Leaderboard">🏆</button>
-        )}
-        <span className={`conn ${connected ? "conn-on" : "conn-off"}`} title={connected ? "Connected to the plant" : "Reconnecting…"} />
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-badge" aria-hidden>🌱</span>
+          <h1>{name}</h1>
+        </div>
+        <nav className="tabs" aria-label="Pages">
+          <a href="#plant" className={tab === "plant" ? "tab tab-on" : "tab"} aria-current={tab === "plant" ? "page" : undefined}>
+            🪴 My Plant
+          </a>
+          <a href="#leaderboard" className={tab === "leaderboard" ? "tab tab-on" : "tab"} aria-current={tab === "leaderboard" ? "page" : undefined}>
+            🏆 Leaderboard
+          </a>
+        </nav>
+        <div className="status">
+          {wake.active && <span className="pill pill-ear" title="Wake word is on">👂 “Hi {name}!”</span>}
+          <span className={`dot ${connected ? "dot-on" : "dot-off"}`} title={connected ? "Connected" : "Reconnecting…"} />
+        </div>
       </header>
 
-      <section className="stage">
-        <div className="bubbles">
-          {offline && !plantLine && (
-            <div className="bubble bubble-plant">I can't feel my roots right now. Is my sensor plugged in?</div>
-          )}
-          {plantLine && (
-            <div key={plantLine} className={`bubble bubble-plant ${voice.speaking ? "bubble-speaking" : ""}`}>
-              {plantLine}
+      {!voice.unlocked && (
+        <button className="sound-banner" onClick={() => void voice.unlock().then(() => talk.prepare())}>
+          🔈 Tap anywhere to turn on my voice!
+        </button>
+      )}
+
+      {tab === "leaderboard" ? (
+        <LeaderboardPage />
+      ) : (
+        <>
+          <main className="home">
+            <section className="stage">
+              {listening && <span className="stage-badge badge-listen">👂 I'm listening!</span>}
+              {talk.status === "thinking" && <span className="stage-badge badge-think">💭 Thinking…</span>}
+              <div className="stage-plant">
+                <PlantCharacter face={face} speaking={voice.speaking} level={voice.level} listening={listening} />
+              </div>
+              <span className={`caption caption-${face}`}>{CAPTIONS[face]}</span>
+            </section>
+            <div className="side">
+              <ChatFeed
+                messages={messages}
+                plantName={name}
+                thinking={waiting || talk.status === "thinking"}
+                hint={`Say hi to ${name}! Tap the microphone, pat my leaf, or pick a question below.`}
+              />
+              <StatCards state={state} face={face} dry={info.thresholds?.dry ?? 30} soggy={info.thresholds?.soggy ?? 90} />
             </div>
-          )}
-          {childLine && <div className="bubble bubble-child">You asked: “{childLine}”</div>}
-        </div>
-        <PlantCharacter face={face} speaking={voice.speaking} level={voice.level} />
-      </section>
+          </main>
+          <TalkDock
+            status={talk.status}
+            error={talk.error}
+            plantName={name}
+            wakeWord={wake.supported}
+            quickQuestions={info.quick_questions}
+            onMic={onMic}
+            onQuestion={(q) => ask(q, "button")}
+          />
+        </>
+      )}
 
-      <section className="gauges">
-        <Gauge label="Water" icon="💧" value={state?.moisture_pct ?? null}
-          low={info.thresholds?.dry ?? 30} high={info.thresholds?.soggy} color="var(--water)" />
-        <Gauge label="Sunlight" icon="☀️" value={state?.light_pct ?? null} low={LIGHT_LOW} color="var(--sun)" />
-      </section>
-
-      <TalkPanel
-        status={talk.status}
-        error={talk.error}
-        sttAvailable={info.stt}
-        quickQuestions={info.quick_questions}
-        onPressStart={() => { voice.stop(); void talk.start(); }}
-        onPressEnd={talk.stop}
-        onQuestion={(q) => ask(q, "button")}
-      />
-    </main>
+      {showDemo && <DemoPanel demoMode={!!info.demo_mode} onClose={() => setShowDemo(false)} />}
+    </div>
   );
 }

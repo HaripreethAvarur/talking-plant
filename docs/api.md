@@ -39,9 +39,13 @@ The detailed API described below remains available alongside these UI routes.
 | `POST /api/v1/care-log/log-now` | ingestion | Record a row now (409 before sign-up) |
 | `POST /api/v1/care-log/label-day?day=YYYY-MM-DD` | ingestion | Label a local day (default today) and purge old data |
 | `GET /api/leaderboard?limit=20` | viewer | `{days, you, entries: LeaderboardEntry[]}`; 503 without a database |
+| `POST /api/wake` | viewer | The UI heard "Hi <name>": greet and send a `listen_request`, like a touch (10 s cooldown) |
+| `GET /api/location/zip?lat=&lon=` | viewer | US ZIP code for the browser's location (OpenStreetMap); 404 outside the US |
 
 `/api/health` also reports `registered`, `username`, `database`, `demo_mode` and the
-plant's `thresholds` (`dry`, `soggy` moisture %). `GET /context` includes `hourly`, the
+plant's `thresholds` (`dry`, `soggy` moisture %). `plant_state` frames carry `air_aqi`,
+`looks` / `looks_at` (the latest photo description) and `checkup_mood`, and are re-sent
+whenever the care log records something. `GET /context` includes `hourly`, the
 same rows the chat uses.
 
 ## Connections

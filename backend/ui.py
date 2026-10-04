@@ -8,11 +8,13 @@ import asyncio
 import contextlib
 import logging
 from collections import OrderedDict
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
+from backend import air
 from backend.conversation import replies
 from backend.conversation.scripted import GREETING_LINE, QUICK_QUESTIONS
 from backend.speech import stt, tts
@@ -73,13 +75,25 @@ class UIHub:
         self.tasks = []
         self.seen = OrderedDict()
         self.silent_until = 0
+        self.last_listen = float("-inf")
 
     def view(self, state, message=None):
         view = to_ui(state, self.settings, message, self.service.engine.t.leaf_stale_seconds)
-        return view.model_copy(update={"looks": self.service.care.latest_looks()})
+        care = self.service.care
+        looks = care.latest_looks()
+        latest = care.recent[-1] if care.recent else None
+        return view.model_copy(
+            update={
+                "looks": looks.health if looks else None,
+                "looks_at": looks.hour.timestamp() if looks else None,
+                "air_aqi": care.air_aqi if care.air_aqi is not None else (latest.air_aqi if latest else None),
+                "checkup_mood": latest.mood if latest else None,
+            }
+        )
 
     async def start(self):
         self.service.subscribers.add(self.queue)
+        self.service.care.on_change = lambda: self.show(self.service.engine.state)
         self.tasks = [asyncio.create_task(self._updates()), asyncio.create_task(self._speech())]
 
     def broadcast(self, payload):
@@ -106,16 +120,17 @@ class UIHub:
                 await asyncio.sleep(0.1)
             self.broadcast(audio.model_dump(mode="json"))
 
-    def _listen(self, event, state):
+    def _listen(self, event_id, plant_id, timestamp, state):
         """Greet the child, then ask the first browser to record for the listening window."""
+        self.last_listen = asyncio.get_running_loop().time()
         self.show(state, GREETING_LINE)
         self.say(GREETING_LINE)
         seconds = self.settings.touch_listen_seconds
         self.silent_until = asyncio.get_running_loop().time() + seconds + 1
         request = ListenRequest(
-            event_id=event.event_id,
-            plant_id=event.plant_id,
-            timestamp=event.timestamp,
+            event_id=event_id,
+            plant_id=plant_id,
+            timestamp=timestamp,
             duration_ms=int(seconds * 1000),
         )
         # One mic per physical plant: only the first connected browser records.
@@ -143,10 +158,18 @@ class UIHub:
                     self.seen.popitem(last=False)
                 fresh = (utcnow() - event.timestamp).total_seconds() <= 5
                 if event.kind == "touch" and self.clients and fresh:
-                    self._listen(event, state)
+                    self._listen(event.event_id, event.plant_id, event.timestamp, state)
                 elif event.suggested_text:
                     self.show(state, event.suggested_text)
                     self.say(event.suggested_text)
+
+    def wake(self) -> bool:
+        """The child said "Hi <plant name>": same as a pat on the touch sensor."""
+        now = asyncio.get_running_loop().time()
+        if not self.clients or now - self.last_listen < self.settings.touch_cooldown_seconds:
+            return False
+        self._listen(uuid4(), self.service.engine.profile.plant_id, utcnow(), self.service.engine.state)
+        return True
 
     async def answer(self, utterance):
         await self.service.tick()
@@ -210,6 +233,18 @@ def install_ui(app, service, settings, viewer):
             raise HTTPException(503, "Couldn't save the plant right now; please try again.") from None
         hub.show(service.engine.state, f"Hi {registration.username}! I'm {registration.plant_name}.")
         return saved
+
+    @router.post("/api/wake", dependencies=viewer)
+    async def wake():
+        """Called by the UI when it hears its wake phrase."""
+        return {"listening": hub.wake()}
+
+    @router.get("/api/location/zip", dependencies=viewer)
+    async def zip_for_location(lat: float, lon: float):
+        zip_code = await air.zip_for(lat, lon)
+        if zip_code is None:
+            raise HTTPException(404, "Couldn't find a US ZIP code for this location")
+        return {"zip": zip_code}
 
     @router.post("/api/stt", dependencies=viewer)
     async def transcribe(request: Request):

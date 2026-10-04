@@ -13,6 +13,9 @@ export interface PlantState {
   light_pct: number | null;
   leaf_issues: string[] | null; // null: the camera has no recent look
   looks?: string | null; // the camera's latest description of the plant
+  looks_at?: number | null; // when that photo was taken (epoch seconds)
+  air_aqi?: number | null; // outdoor US AQI for the plant's ZIP code
+  checkup_mood?: Mood | null; // ASI's label at the latest care-log checkup
   ts: number;
   sensor_health?: string;
   light_value?: number | null;

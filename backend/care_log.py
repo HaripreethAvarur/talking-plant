@@ -34,6 +34,8 @@ class CareLog:
         self.last_slot = None
         self.labelled_day: date | None = None
         self.lock = asyncio.Lock()
+        self.air_aqi: float | None = None  # refreshed at every checkup, before the slower photo
+        self.on_change = None  # called after new data, e.g. to refresh the UI
 
     @property
     def username(self):
@@ -54,16 +56,22 @@ class CareLog:
     async def reload(self):
         """Fill the in-memory window from the database (after start or a new registration)."""
         self.recent.clear()
+        self.last_slot = None  # check up soon after a (new) registration
         if self.username and self._db():
             with contextlib.suppress(Exception):
                 self.recent.extend(await asyncio.to_thread(self.service.store.recent_hourly, self.username))
 
-    def latest_looks(self, now=None) -> str | None:
+    def latest_looks(self, now=None) -> HourlyReading | None:
+        """The newest row with a photo description under two hours old."""
         now = now or utcnow()
         for row in reversed(self.recent):
             if row.health and now - row.hour <= LOOKS_FRESH_FOR:
-                return row.health
+                return row
         return None
+
+    def _changed(self):
+        if self.on_change:
+            self.on_change()
 
     def _slot_start(self, now: datetime) -> datetime:
         seconds = self.settings.log_interval_minutes * 60
@@ -78,7 +86,11 @@ class CareLog:
         async with self.lock:
             engine = self.service.engine
             view = to_ui(engine.state, self.settings, leaf_stale_seconds=engine.t.leaf_stale_seconds)
-            aqi, looks = await asyncio.gather(air.us_aqi(self.service.registration.location), health.look())
+            aqi = await air.us_aqi(self.service.registration.location)
+            if aqi is not None:
+                self.air_aqi = aqi
+                self._changed()  # show fresh air quality before the slower photo check
+            looks = await health.look()
             mood = await labels.label_hour(
                 local_time=now.astimezone(self.zone).strftime("%A %H:%M"),
                 plant_type=engine.profile.plant_type.value,
@@ -109,6 +121,7 @@ class CareLog:
             log.info(
                 "Logged %s: water %s%%, sun %s%%, mood %s", row.hour, row.water_pct, row.sun_pct, mood.value
             )
+            self._changed()
             return row
 
     async def label_day(self, day: date | None = None) -> Mood | None:

@@ -100,6 +100,41 @@
       "default": null,
       "title": "Looks"
     },
+    "looks_at": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Looks At"
+    },
+    "air_aqi": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Air Aqi"
+    },
+    "checkup_mood": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Mood"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "ts": {
       "title": "Ts",
       "type": "number"

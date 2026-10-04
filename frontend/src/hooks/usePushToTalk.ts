@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { viewerToken } from "../api";
 import type { ChildUtterance } from "../contracts";
 
 export type TalkStatus = "idle" | "listening" | "thinking" | "error";
 const MIN_CLIP_MS = 400;
+export const LISTEN_MS = 8000; // a tap records this long unless tapped again
 
-/** Manual push-to-talk plus a bounded, previously authorized hardware-touch window. */
+/** Tap-to-talk recording, plus the bounded window opened by the touch sensor or wake word. */
 export function usePushToTalk(onText: (text: string, source: ChildUtterance["source"]) => void) {
   const [status, setStatus] = useState<TalkStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +96,7 @@ export function usePushToTalk(onText: (text: string, source: ChildUtterance["sou
         pendingRequest.current = controller;
         const deadline = setTimeout(() => controller.abort(), 15000);
         try {
-          const token = sessionStorage.getItem("plantViewerToken");
+          const token = viewerToken();
           const response = await fetch("/api/stt", {
             method: "POST",
             headers: { "content-type": recording.mimeType || "audio/webm", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -144,7 +146,7 @@ export function usePushToTalk(onText: (text: string, source: ChildUtterance["sou
 
   const startFor = useCallback(async (durationMs: number) => {
     if (!armed.current) {
-      setError("Tap the talk button once to allow the microphone before using the touch sensor.");
+      setError("Tap the talk button once to allow the microphone.");
       setStatus("error");
       return false;
     }
@@ -156,23 +158,18 @@ export function usePushToTalk(onText: (text: string, source: ChildUtterance["sou
       const target = event.target as HTMLElement;
       return ["INPUT", "TEXTAREA", "SELECT"].includes(target?.tagName) || target?.isContentEditable;
     };
+    // Space works like the big button: tap to start, tap again to stop.
     const down = (event: KeyboardEvent) => {
       if (event.code !== "Space" || event.repeat || typing(event)) return;
       event.preventDefault();
-      void start();
-    };
-    const up = (event: KeyboardEvent) => {
-      if (event.code !== "Space" || typing(event)) return;
-      event.preventDefault();
-      stop();
+      if (recorder.current?.state === "recording") stop();
+      else void start(LISTEN_MS);
     };
     const hide = () => { if (document.hidden) cancel(); };
     window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
     document.addEventListener("visibilitychange", hide);
     return () => {
       window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
       document.removeEventListener("visibilitychange", hide);
       cancel();
     };

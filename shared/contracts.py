@@ -349,6 +349,9 @@ class UIPlantState(BaseModel):
     # None: the camera has no recent look at the leaves. []: it looked and saw nothing wrong.
     leaf_issues: list[str] | None = None
     looks: str | None = None  # the vision model's latest description, if under 2 hours old
+    looks_at: float | None = None  # when that photo was taken (epoch seconds)
+    air_aqi: float | None = None  # outdoor US AQI for the plant's ZIP code
+    checkup_mood: Mood | None = None  # ASI's label at the latest care-log checkup
     ts: float = Field(default_factory=now)
     sensor_health: Status = Status.missing
     light_unit: Literal["lux", "raw"] | None = None
