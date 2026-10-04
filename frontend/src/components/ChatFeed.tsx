@@ -17,7 +17,8 @@ interface Props {
 export function ChatFeed({ messages, plantName, thinking, hint }: Props) {
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const scroll = end.current?.parentElement;
+    if (scroll) scroll.scrollTop = scroll.scrollHeight;
   }, [messages, thinking]);
 
   return (

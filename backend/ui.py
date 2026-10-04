@@ -286,7 +286,7 @@ def install_ui(app, service, settings, viewer):
             "stt": stt.is_available(),
             "tts": tts.is_available(),
             "llm": replies.is_available(),
-            "plant": {"name": profile.name, "species": profile.species},
+            "plant": {"name": profile.name, "species": profile.species, "timezone": profile.timezone},
             "registered": registration is not None,
             "username": registration.username if registration else None,
             "database": service.store.engine is not None,

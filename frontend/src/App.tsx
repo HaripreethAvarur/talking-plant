@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { readAudience, saveAudience, type Audience } from "./audience";
 import { api } from "./api";
 import type { ChildUtterance, Face, Health, ListenRequest, PlantRegistration, SpeechAudio } from "./contracts";
 import { ChatFeed, type ChatMessage } from "./components/ChatFeed";
@@ -46,6 +47,10 @@ export default function App() {
   const [showDemo, setShowDemo] = useState(false);
   const [editing, setEditing] = useState<PlantRegistration | null>(null);
   const nextId = useRef(1);
+  const [showConversation, setShowConversation] = useState(false);
+  const [audience, setAudience] = useState<Audience>(readAudience);
+  const changeAudience = (value: Audience) => { setAudience(value); saveAudience(value); };
+  const lastMessage = useRef<string | null>(null);
 
   const say = useCallback((from: ChatMessage["from"], text: string) => {
     setMessages((list) => [...list, { id: nextId.current++, from, text }].slice(-MAX_MESSAGES));
@@ -72,9 +77,9 @@ export default function App() {
 
   const ask = useCallback(
     (text: string, source: ChildUtterance["source"]) => {
+      if (!sendUtterance(text, source)) return;
       say("kid", text);
       setWaiting(true);
-      sendUtterance(text, source);
     },
     [say, sendUtterance],
   );
@@ -90,7 +95,8 @@ export default function App() {
 
   // Every line the plant says goes into the chat.
   useEffect(() => {
-    if (state?.message) {
+    if (state?.message && `${state.ts}:${state.message}` !== lastMessage.current) {
+      lastMessage.current = `${state.ts}:${state.message}`;
       say("plant", state.message);
       setWaiting(false);
     }
@@ -133,7 +139,7 @@ export default function App() {
 
   const info = health ?? FALLBACK_HEALTH;
   const name = info.plant.name;
-  const offline = !state || OFFLINE_HEALTH.includes(state.sensor_health ?? "missing");
+  const offline = !connected || !state || OFFLINE_HEALTH.includes(state.sensor_health ?? "missing");
   const face: Face = offline ? "offline" : state.mood;
   const listening = talk.status === "listening";
 
@@ -146,7 +152,7 @@ export default function App() {
   if (health && !health.registered) {
     return (
       <div className="app">
-        <Scene face="happy" />
+        <Scene face="happy" timezone={health?.plant.timezone} />
         <SignUp onDone={loadHealth} />
       </div>
     );
@@ -163,7 +169,7 @@ export default function App() {
 
   return (
     <div className={`app face-${face}`}>
-      <Scene face={tab === "leaderboard" ? "happy" : face} night={state?.is_night} weatherCode={state?.weather_code} lightPct={state?.light_pct} />
+      <Scene face={tab === "leaderboard" ? "happy" : face} timezone={info.plant.timezone} night={state?.is_night} lightPct={state?.light_pct} />
 
       <header className="topbar">
         <div className="brand">
@@ -176,20 +182,21 @@ export default function App() {
         </div>
         <nav className="tabs" aria-label="Pages">
           <a href="#plant" className={tab === "plant" ? "tab tab-on" : "tab"} aria-current={tab === "plant" ? "page" : undefined}>
-            🪴 My Plant
+            My garden
           </a>
           <a href="#leaderboard" className={tab === "leaderboard" ? "tab tab-on" : "tab"} aria-current={tab === "leaderboard" ? "page" : undefined}>
-            🏆 Leaderboard
+            Garden club
           </a>
         </nav>
         <div className="status">
+          <span className="connection-label">{connected ? "Live" : "Connecting"}</span>
           <span className={`dot ${connected ? "dot-on" : "dot-off"}`} title={connected ? "Connected" : "Reconnecting…"} />
         </div>
       </header>
 
-      {!voice.unlocked && (
+      {!voice.unlocked && tab === "plant" && (
         <button className="sound-banner" onClick={() => void voice.unlock().then(() => talk.prepare())}>
-          🔈 Tap anywhere to turn on my voice!
+          Turn on plant voice
         </button>
       )}
 
@@ -198,34 +205,38 @@ export default function App() {
       ) : (
         <>
           <main className="home">
-            <section className="stage">
-              {listening && <span className="stage-badge badge-listen">👂 I'm listening!</span>}
-              {talk.status === "thinking" && <span className="stage-badge badge-think">💭 Thinking…</span>}
+            <section className="stage" aria-label={`${name}'s garden`}>
+              <div className="garden-intro"><span className="eyebrow">{info.username ? `${info.username}’s garden` : "YOUR LITTLE CORNER OF NATURE"}</span><h2>{audience === "5-7" ? "Hello, little grower!" : audience === "12-15" ? "Your plant. Your world." : "Let’s grow something good."}</h2><p>A living friend. Something new to discover every day.</p></div>
+              <div className="plant-speech" role="status">
+                <span className="eyebrow">{name}</span>
+                <p>{listening ? "I'm listening. What's on your mind?" : waiting || talk.status === "thinking" ? "Let me think about that…" : [...messages].reverse().find(m => m.from === "plant")?.text ?? (offline ? "My sensors are taking a little break. I'll be back soon." : `Hi! I'm ${name}. Come say hello.`)}</p>
+              </div>
               <div className="stage-plant">
                 <PlantCharacter face={face} speaking={voice.speaking} level={voice.level} listening={listening} />
               </div>
               <span className={`caption caption-${face}`}>{CAPTIONS[face]}</span>
             </section>
-            <div className="side">
-              <ChatFeed
-                plantName={name}
-                messages={messages}
-                    thinking={waiting || talk.status === "thinking"}
-                hint={`Say hi to ${name}! Pat my leaf, tap the microphone, or pick a question below.`}
-              />
-              <StatCards state={state} face={face} dry={info.thresholds?.dry ?? 30} soggy={info.thresholds?.soggy ?? 90} />
-            </div>
-          </main>
           <TalkDock
             status={talk.status}
             error={talk.error}
+            plantName={name}
+            disabled={!connected || waiting}
             quickQuestions={info.quick_questions}
             onMic={onMic}
             onQuestion={(q) => ask(q, "button")}
           />
+            <section className="garden-tools" aria-label="Plant care">
+              <div className="readings-header"><div><span className="eyebrow">MY WORLD RIGHT NOW</span><h3>How I’m doing</h3></div></div>
+              <StatCards state={state} sensorOffline={offline} face={face} audience={audience} dry={info.thresholds?.dry ?? 30} soggy={info.thresholds?.soggy ?? 90} />
+              <div className="panel-tabs"><details className="reading-settings"><summary>Reading style</summary><label>Show information as<select aria-label="Reading style" value={audience} onChange={e => changeAudience(e.target.value as Audience)}><option value="5-7">Simple</option><option value="8-11">Curious</option><option value="12-15">More science</option></select></label></details><button aria-expanded={showConversation} aria-controls="garden-conversation" onClick={() => setShowConversation(!showConversation)}>{showConversation ? "Hide conversation" : "Our conversation"}</button></div>
+              <div id="garden-conversation">{showConversation && <ChatFeed messages={messages} plantName={name} thinking={waiting || talk.status === "thinking"} hint={`Your conversation with ${name} will appear here.`} />}</div>
+            </section>
+          </main>
+
         </>
       )}
 
+      <footer className="garden-footer">Grow curious. <span>v0.0.2</span></footer>
       {showDemo && <DemoPanel demoMode={!!info.demo_mode} onClose={() => setShowDemo(false)} />}
     </div>
   );
