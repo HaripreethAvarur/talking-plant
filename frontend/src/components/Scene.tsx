@@ -26,6 +26,7 @@ function Cloud({ className }: { className: string }) {
 export function Scene({ face }: { face: Face }) {
   const night = face === "sleepy" || face === "too_dark";
   const rainy = face === "soggy";
+  const overcast = rainy || face === "offline";
   return (
     <div className={`scene scene-${face}`} aria-hidden>
       {night ? (
@@ -35,7 +36,7 @@ export function Scene({ face }: { face: Face }) {
           ))}
           <div className="moon" />
         </>
-      ) : rainy ? null : (
+      ) : overcast ? null : (
         <div className={`sun ${face === "thirsty" ? "sun-hot" : ""}`}>
           <div className="sun-rays" />
           <div className="sun-core" />
