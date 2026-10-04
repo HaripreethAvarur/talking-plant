@@ -29,8 +29,19 @@ Follow [Arduino setup](arduino-setup.md):
   often breaks the length rule.
 - Plant Care Agent: starts, publishes the chat protocol and registers on the Almanac API.
   Its mailbox must be connected once from the Agent inspector (needs an Agentverse login).
+- Ollama: `moondream` runs on this 8 GB laptop (about 17 s a photo once loaded) but is
+  not very accurate, e.g. it calls a golden pothos's natural yellow streaks unhealthy.
+  ASI weighs it against the sensors. Use `llama3.2-vision` on a machine with more RAM.
+- Air quality: Open-Meteo by ZIP (via zippopotam.us), no key; cached for 30 minutes.
 - Fetch event mirror: optional and off by default; it needs a seed and a target agent.
 - Hosting: no remote deployment has been made; see [deployment.md](deployment.md).
+
+## Not done
+
+- The hub sketch can light an LED for unhappy moods (`ArduinoSerialAdapter.write_mood`),
+  but the bridge doesn't send moods to it yet.
+- Night is a fixed window (21:00–07:00 local, set in the profile), not real sunset times.
+- Without `DATABASE_URL`, a registration lasts only until the backend restarts.
 
 ## Deliberate limits
 

@@ -5,6 +5,15 @@ plant's mood, stores care history, and sends live updates to a React character. 
 the touch pad opens the microphone; the child's question gets a short, grounded reply
 in the plant's voice.
 
+Two layers work together:
+
+- **Live** (every second, rules only): moisture and light set the mood (happy, thirsty,
+  soggy, too dark, sleepy at night, unwell, grateful just after watering), the face and
+  gauges update, and the plant speaks when its mood changes.
+- **Care log** (every hour): sun, water, local air quality, an Ollama description of a
+  webcam photo, and an ASI:One mood label are saved to Neon. Each night ASI labels the
+  day; happy days feed a global weekly leaderboard. Chat answers use the last 24 hours.
+
 ## Run locally
 
 Commands are shown with `python`; inside the virtual environment that's
@@ -22,8 +31,10 @@ npm --prefix frontend run dev                     # terminal 2: open http://loca
 python -m backend.sensors.bridge --mode arduino-mock --count 24   # terminal 3 (make arduino-mock)
 ```
 
-Click **Tap to wake up** and allow the microphone. The simulated pat arrives after four
-seconds and the soil is "watered" after eight. `python -m scripts.touch` sends another pat
+The first launch asks for the kid's name, the plant's name, its type (succulent,
+houseplant or tree, which sets its dry and soggy levels) and a ZIP code for local air.
+Then click **Tap to wake up** and allow the microphone. The simulated pat arrives after
+four seconds and the soil is "watered" after eight. `python -m scripts.touch` sends another pat
 (allow ten seconds between pats). With blank speech/LLM keys the plant still works: the
 question buttons replace the microphone, replies come from scripted lines, and the
 browser's own voice speaks.
@@ -31,6 +42,17 @@ browser's own voice speaks.
 Set `DATABASE_URL=sqlite:///./plant.db` in `.env` to keep history between runs, or a Neon
 URL for the shared database. Blank keeps a bounded in-memory history.
 `docker compose up` (`make local`) runs the backend with a local PostgreSQL instead.
+
+### Demo tips
+
+- `DEMO_MODE=true` and `LOG_INTERVAL_MINUTES=1` in `.env` make the stage run lively.
+- **Shift+D** opens hidden controls: force "dry then watered", dry, healthy or dark, log
+  a care row now, or label today. The 🏆 button opens the leaderboard.
+- `python -m backend.speech.pregenerate` records every fixed line (done on this laptop),
+  so the core lines play without internet.
+- The photo description needs Ollama with a vision model: `ollama pull llama3.2-vision`
+  (Meta, needs about 8 GB of free RAM) or `ollama pull moondream` for small laptops, then
+  set `OLLAMA_MODEL`. `CAMERA_IMAGE=path.jpg` describes a file instead of the webcam.
 
 ## Real hardware
 

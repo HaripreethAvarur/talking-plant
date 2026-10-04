@@ -29,6 +29,21 @@ set it at runtime using browser developer tools, then reload. Do not put the ing
 token in the browser. No login screen is included. Local mode needs no tokens.
 The detailed API described below remains available alongside these UI routes.
 
+## Sign-up, care log and leaderboard
+
+| Route | Auth | What it does |
+|---|---|---|
+| `POST /api/plant` | viewer | Register the kid's plant (`PlantRegistration`); the profile takes its name and moisture bands |
+| `GET /api/plant` | viewer | The registration, or 404 before sign-up |
+| `GET /api/v1/care-log` | viewer | The last 24 care-log rows (`HourlyReading`), oldest first |
+| `POST /api/v1/care-log/log-now` | ingestion | Record a row now (409 before sign-up) |
+| `POST /api/v1/care-log/label-day?day=YYYY-MM-DD` | ingestion | Label a local day (default today) and purge old data |
+| `GET /api/leaderboard?limit=20` | viewer | `{days, you, entries: LeaderboardEntry[]}`; 503 without a database |
+
+`/api/health` also reports `registered`, `username`, `database`, `demo_mode` and the
+plant's `thresholds` (`dry`, `soggy` moisture %). `GET /context` includes `hourly`, the
+same rows the chat uses.
+
 ## Connections
 
 Local HTTP: `http://127.0.0.1:8000`; WebSocket: `ws://127.0.0.1:8000/ws/plants/plant-1`.
