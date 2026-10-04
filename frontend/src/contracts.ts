@@ -53,7 +53,7 @@ export interface Health {
   stt: boolean;
   tts: boolean;
   llm: boolean;
-  plant: { name: string; species: string };
+  plant: { name: string; species: string; timezone?: string };
   registered?: boolean;
   username?: string | null;
   database?: boolean;

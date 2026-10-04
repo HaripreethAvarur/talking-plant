@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { readAudience, saveAudience, type Audience } from "./audience";
 import { api } from "./api";
 import type { ChildUtterance, Face, Health, ListenRequest, SpeechAudio } from "./contracts";
 import { ChatFeed, type ChatMessage } from "./components/ChatFeed";
@@ -46,7 +47,9 @@ export default function App() {
   const [waiting, setWaiting] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
   const nextId = useRef(1);
-  const [panel, setPanel] = useState<"conversation" | "explore" | null>(null);
+  const [showConversation, setShowConversation] = useState(false);
+  const [audience, setAudience] = useState<Audience>(readAudience);
+  const changeAudience = (value: Audience) => { setAudience(value); saveAudience(value); };
   const lastMessage = useRef<string | null>(null);
 
   const say = useCallback((from: ChatMessage["from"], text: string) => {
@@ -147,15 +150,15 @@ export default function App() {
   if (health && !health.registered) {
     return (
       <div className="app">
-        <Scene face="happy" />
-        <SignUp onDone={loadHealth} />
+        <Scene face="happy" timezone={health?.plant.timezone} />
+        <SignUp onDone={loadHealth} audience={audience} onAudience={changeAudience} />
       </div>
     );
   }
 
   return (
     <div className={`app face-${face}`}>
-      <Scene face={tab === "leaderboard" ? "happy" : face} />
+      <Scene face={tab === "leaderboard" ? "happy" : face} timezone={info.plant.timezone} />
 
       <header className="topbar">
         <div className="brand">
@@ -189,7 +192,7 @@ export default function App() {
         <>
           <main className="home">
             <section className="stage" aria-label={`${name}'s garden`}>
-              <div className="garden-intro"><span className="eyebrow">YOUR LITTLE CORNER OF NATURE</span><h2>A little care.<br />A lot of personality.</h2></div>
+              <div className="garden-intro"><span className="eyebrow">{info.username ? `${info.username}’s garden` : "YOUR LITTLE CORNER OF NATURE"}</span><h2>{audience === "5-7" ? "Hello, little grower!" : audience === "12-15" ? "Your plant. Your world." : "Let’s grow something good."}</h2><p>A living friend. Something new to discover every day.</p></div>
               <div className="plant-speech" role="status">
                 <span className="eyebrow">{name}</span>
                 <p>{listening ? "I'm listening. What's on your mind?" : waiting || talk.status === "thinking" ? "Let me think about that…" : [...messages].reverse().find(m => m.from === "plant")?.text ?? (offline ? "My sensors are taking a little break. I'll be back soon." : `Hi! I'm ${name}. Come say hello.`)}</p>
@@ -199,22 +202,6 @@ export default function App() {
               </div>
               <span className={`caption caption-${face}`}>{CAPTIONS[face]}</span>
             </section>
-            <section className="garden-tools" aria-label="Plant care">
-              <div className="care-summary">
-                <span><i aria-hidden className="care-dot water-dot" />Soil <strong>{offline || state?.moisture_pct == null ? "Waiting for sensor" : state.moisture_pct < (info.thresholds?.dry ?? 30) ? "Needs water" : state.moisture_pct > (info.thresholds?.soggy ?? 90) ? "Too wet" : "Just right"}</strong></span>
-                <span><i aria-hidden className="care-dot light-dot" />Light <strong>{offline || state?.light_pct == null ? "Waiting for sensor" : face === "too_dark" ? "Needs light" : face === "sleepy" ? "Resting" : "Enough light"}</strong></span>
-                <span><i aria-hidden className="care-dot air-dot" />Outdoor air <strong>{state?.air_aqi == null ? "Checking" : state.air_aqi <= 50 ? "Good" : state.air_aqi <= 100 ? "Moderate" : "Unhealthy for some"}</strong></span>
-              </div>
-              <div className="panel-tabs">
-                <button aria-expanded={panel === "conversation"} aria-controls="garden-panel" onClick={() => setPanel(panel === "conversation" ? null : "conversation")}>Conversation</button>
-                <button aria-expanded={panel === "explore"} aria-controls="garden-panel" onClick={() => setPanel(panel === "explore" ? null : "explore")}>Explore my plant <span aria-hidden>↗</span></button>
-              </div>
-              <div id="garden-panel">
-                {panel === "conversation" && <ChatFeed messages={messages} plantName={name} thinking={waiting || talk.status === "thinking"} hint={`Your conversation with ${name} will appear here.`} />}
-                {panel === "explore" && <><p className="explore-note">A closer look at my world. Soil moisture and light are sensor readings; AQI describes outdoor air near my location.</p><StatCards state={offline ? null : state} face={face} dry={info.thresholds?.dry ?? 30} soggy={info.thresholds?.soggy ?? 90} /></>}
-              </div>
-            </section>
-          </main>
           <TalkDock
             status={talk.status}
             error={talk.error}
@@ -225,6 +212,14 @@ export default function App() {
             onMic={onMic}
             onQuestion={(q) => ask(q, "button")}
           />
+            <section className="garden-tools" aria-label="Plant care">
+              <div className="readings-header"><div><span className="eyebrow">MY WORLD RIGHT NOW</span><h3>How I’m doing</h3></div><label className="audience-choice">Information level<select aria-label="Information level" value={audience} onChange={e => changeAudience(e.target.value as Audience)}><option value="5-7">Ages 5–7 · Simple</option><option value="8-11">Ages 8–11 · Curious</option><option value="12-15">Ages 12–15 · Detailed</option></select></label></div>
+              <StatCards state={state} sensorOffline={offline} face={face} audience={audience} dry={info.thresholds?.dry ?? 30} soggy={info.thresholds?.soggy ?? 90} />
+              <div className="panel-tabs"><button aria-expanded={showConversation} aria-controls="garden-conversation" onClick={() => setShowConversation(!showConversation)}>{showConversation ? "Hide conversation" : "Our conversation"}</button></div>
+              <div id="garden-conversation">{showConversation && <ChatFeed messages={messages} plantName={name} thinking={waiting || talk.status === "thinking"} hint={`Your conversation with ${name} will appear here.`} />}</div>
+            </section>
+          </main>
+
         </>
       )}
 

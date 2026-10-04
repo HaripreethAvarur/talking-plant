@@ -1,7 +1,10 @@
+import type { Audience } from "../audience";
 import type { Face, Mood, PlantState } from "../contracts";
 
 interface Props {
   state: PlantState | null;
+  audience: Audience;
+  sensorOffline: boolean;
   face: Face;
   dry: number;
   soggy: number;
@@ -50,9 +53,9 @@ const CHECKUP: Record<Mood, [Tone, string]> = {
 };
 
 /** Four big, friendly gauges: water, sunshine, air and how the plant looks on camera. */
-export function StatCards({ state, face, dry, soggy }: Props) {
-  const water = state?.moisture_pct ?? null;
-  const sun = state?.light_pct ?? null;
+export function StatCards({ state, face, dry, soggy, audience, sensorOffline }: Props) {
+  const water = sensorOffline ? null : state?.moisture_pct ?? null;
+  const sun = sensorOffline ? null : state?.light_pct ?? null;
   const [waterTone, waterText]: [Tone, string] =
     water == null ? ["none", "Can't tell yet"] : water < dry ? ["bad", "Thirsty!"] : water > soggy ? ["warn", "Too wet!"] : ["good", "Just right"];
   const [sunTone, sunText]: [Tone, string] =
@@ -64,32 +67,34 @@ export function StatCards({ state, face, dry, soggy }: Props) {
     <section className="stats">
       <article className="stat card stat-water">
         <header><span className="title-icon bg-blue">💧</span> Water</header>
-        <strong className="stat-value">{water == null ? "–" : `${Math.round(water)}%`}</strong>
-        <Meter value={water} color="linear-gradient(90deg,#3ab0ff,#5bd0ff)" marks={[dry, soggy]} />
-        <Chip tone={waterTone}>{waterText}</Chip>
+        <strong className="stat-value">{audience === "5-7" ? waterText : water == null ? "–" : `${Math.round(water)}%`}</strong>
+        {audience !== "5-7" && <Meter value={water} color="linear-gradient(90deg,#3ab0ff,#5bd0ff)" marks={[dry, soggy]} />}
+        {audience !== "5-7" && <p className="reading-detail">{audience === "12-15" ? `Soil moisture · care band ${dry}–${soggy}%` : "How wet my soil feels"}</p>}
+        {audience !== "5-7" && <Chip tone={waterTone}>{waterText}</Chip>}
       </article>
 
       <article className="stat card stat-sun">
         <header><span className="title-icon bg-yellow">☀️</span> Sunshine</header>
-        <strong className="stat-value">{sun == null ? "–" : `${Math.round(sun)}%`}</strong>
-        <Meter value={sun} color="linear-gradient(90deg,#ffb020,#ffd23f)" />
-        <Chip tone={sunTone}>{sunText}</Chip>
+        <strong className="stat-value">{audience === "5-7" ? sunText : sun == null ? "–" : `${Math.round(sun)}%`}</strong>
+        {audience !== "5-7" && <Meter value={sun} color="linear-gradient(90deg,#ffb020,#ffd23f)" />}
+        {audience !== "5-7" && <p className="reading-detail">{audience === "12-15" ? `Relative light level${state?.light_value == null ? "" : ` · ${Math.round(state.light_value)} ${state.light_unit ?? "raw"}`}` : "Light helps me grow"}</p>}
+        {audience !== "5-7" && <Chip tone={sunTone}>{sunText}</Chip>}
       </article>
 
       <article className="stat card stat-air">
         <header><span className="title-icon bg-teal">🌬️</span> Air</header>
         <strong className="stat-value">
-          {state?.air_aqi == null ? "–" : Math.round(state.air_aqi)}
-          <small> AQI</small>
+          {audience === "5-7" ? airText : state?.air_aqi == null ? "–" : Math.round(state.air_aqi)}
+          {audience !== "5-7" && <small> AQI</small>}
         </strong>
-        <p className="aqi-explanation">Outdoor air · lower AQI is better</p>
-        <Chip tone={airTone}>{airText}</Chip>
+        <p className="aqi-explanation">{audience === "5-7" ? "The air outside near my home" : audience === "8-11" ? "Outdoor air · smaller numbers mean cleaner air" : "Outdoor US AQI · lower is better; not an indoor sensor"}</p>
+        {audience !== "5-7" && <Chip tone={airTone}>{airText}</Chip>}
       </article>
 
       <article className="stat card stat-look">
         <header><span className="title-icon bg-purple">📸</span> How I look</header>
         <p className="look-text" title={state?.looks ?? undefined}>
-          {state?.looks ?? "I'll take a selfie soon!"}
+          {audience === "5-7" ? lookText : state?.looks ?? "I’ll take a selfie soon!"}
         </p>
         <div className="look-foot">
           <Chip tone={lookTone}>{lookText}</Chip>
