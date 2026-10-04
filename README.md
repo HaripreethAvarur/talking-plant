@@ -111,6 +111,8 @@ python -m ruff check backend shared scripts tests # make lint
 python -m scripts.export_contracts                # make schemas (after changing contracts)
 python -m backend.conversation.try_questions      # sample replies
 python -m scripts.asi_latency                     # ASI:One speed with 24 hourly rows (uses the key)
+python -m scripts.check_services                  # live check of Neon, ElevenLabs, ASI:One, agent, Ollama, air
+python -m scripts.show_db                         # print the database contents (read-only)
 npm --prefix frontend run build
 ```
 
