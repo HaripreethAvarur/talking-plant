@@ -4,7 +4,7 @@
 
 - Restore clock-driven morning/day/evening/night scenery with mood accents and plant color changes.
 - Show all care cards by default and place talking controls before readings.
-- Add selectable information levels for ages 5–7, 8–11, and 12–15, remembered in this browser.
+- Add Simple, Curious, and More science reading styles, remembered in this browser and tucked into a collapsed main-page preference. Setup does not ask for age or reading style.
 - Replace the setup form with a three-step nickname, plant, and garden flow.
 - Default the example vision configuration to moondream; keep credentials in ignored local .env only.
 

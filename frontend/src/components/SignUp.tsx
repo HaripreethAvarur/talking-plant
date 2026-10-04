@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import type { Audience } from "../audience";
 import { api } from "../api";
 import type { PlantRegistration, PlantType } from "../contracts";
 import { PlantCharacter } from "./PlantCharacter";
@@ -11,7 +10,7 @@ const TYPES: { value: PlantType; emoji: string; label: string; hint: string; col
 ];
 
 /** First launch: who you are, what your plant is called, and where it lives. */
-export function SignUp({ onDone, audience, onAudience }: { onDone: () => void; audience: Audience; onAudience: (value: Audience) => void }) {
+export function SignUp({ onDone }: { onDone: () => void }) {
   const [form, setForm] = useState<PlantRegistration>({ username: "", plant_name: "", plant_type: "plant", location: "" });
   const [step, setStep] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
@@ -77,7 +76,6 @@ export function SignUp({ onDone, audience, onAudience }: { onDone: () => void; a
           <small>2–32 letters or numbers. No spaces needed.</small>
         </label>
 
-        <label className="field"><span>How much would you like to discover?</span><select value={audience} onChange={e => onAudience(e.target.value as Audience)}><option value="5-7">Ages 5–7 · Simple words</option><option value="8-11">Ages 8–11 · Numbers and explanations</option><option value="12-15">Ages 12–15 · More science</option></select><small>You can change this in your garden. Saved on this browser.</small></label>
         </>}
         {step === 1 && <>
         <label className="field">

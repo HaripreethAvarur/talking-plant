@@ -151,7 +151,7 @@ export default function App() {
     return (
       <div className="app">
         <Scene face="happy" timezone={health?.plant.timezone} />
-        <SignUp onDone={loadHealth} audience={audience} onAudience={changeAudience} />
+        <SignUp onDone={loadHealth} />
       </div>
     );
   }
@@ -213,9 +213,9 @@ export default function App() {
             onQuestion={(q) => ask(q, "button")}
           />
             <section className="garden-tools" aria-label="Plant care">
-              <div className="readings-header"><div><span className="eyebrow">MY WORLD RIGHT NOW</span><h3>How I’m doing</h3></div><label className="audience-choice">Information level<select aria-label="Information level" value={audience} onChange={e => changeAudience(e.target.value as Audience)}><option value="5-7">Ages 5–7 · Simple</option><option value="8-11">Ages 8–11 · Curious</option><option value="12-15">Ages 12–15 · Detailed</option></select></label></div>
+              <div className="readings-header"><div><span className="eyebrow">MY WORLD RIGHT NOW</span><h3>How I’m doing</h3></div></div>
               <StatCards state={state} sensorOffline={offline} face={face} audience={audience} dry={info.thresholds?.dry ?? 30} soggy={info.thresholds?.soggy ?? 90} />
-              <div className="panel-tabs"><button aria-expanded={showConversation} aria-controls="garden-conversation" onClick={() => setShowConversation(!showConversation)}>{showConversation ? "Hide conversation" : "Our conversation"}</button></div>
+              <div className="panel-tabs"><details className="reading-settings"><summary>Reading style</summary><label>Show information as<select aria-label="Reading style" value={audience} onChange={e => changeAudience(e.target.value as Audience)}><option value="5-7">Simple</option><option value="8-11">Curious</option><option value="12-15">More science</option></select></label></details><button aria-expanded={showConversation} aria-controls="garden-conversation" onClick={() => setShowConversation(!showConversation)}>{showConversation ? "Hide conversation" : "Our conversation"}</button></div>
               <div id="garden-conversation">{showConversation && <ChatFeed messages={messages} plantName={name} thinking={waiting || talk.status === "thinking"} hint={`Your conversation with ${name} will appear here.`} />}</div>
             </section>
           </main>

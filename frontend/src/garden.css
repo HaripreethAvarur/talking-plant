@@ -96,3 +96,11 @@ body { background:var(--garden-page); transition:background 1.5s; }
 @media (max-width:480px) { .readings-header { align-items:start; flex-direction:column; }.audience-choice { width:100%; }.stats { gap:10px; }.stat { padding:14px; }.stat header { font-size:.85rem; gap:4px; }.title-icon { width:24px; }.stat-value { font-size:1.3rem; }.onboarding .signup { padding:22px; }.welcome-garden h1 { font-size:2rem; }.welcome-garden .character { width:100px; height:130px; top:65px; }.type-choices { grid-template-columns:1fr; }.type-choice { flex-direction:row; justify-content:flex-start; gap:12px; }.stage-plant { width:250px; height:310px; } }
 :root[data-day-phase=night] .type-chosen,:root[data-day-phase=night] .zip-row .btn { color:#203c32; }
 select:focus-visible { outline:3px solid #78b85a; outline-offset:3px; }
+
+/* Secondary preference, collapsed until requested; never part of setup. */
+.reading-settings { color:var(--ink-soft); font:12px/1.5 system-ui,sans-serif; max-width:230px; }
+.reading-settings summary { cursor:pointer; padding:12px 4px; min-height:44px; font-size:11px; }
+.reading-settings label { display:flex; flex-direction:column; gap:8px; padding:8px 0 14px; }
+.reading-settings select { font:13px/1.5 system-ui,sans-serif; min-height:44px; padding:8px 12px; color:var(--ink); background:var(--paper); border:1px solid #9cab9b; border-radius:10px; }
+.reading-settings summary:focus-visible { outline:3px solid #78b85a; outline-offset:3px; }
+@media (max-width:480px) { .readings-header { flex-direction:row; }.panel-tabs { align-items:flex-start; gap:12px; } }
