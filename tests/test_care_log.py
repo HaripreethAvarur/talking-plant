@@ -125,6 +125,10 @@ def test_day_mood_goes_on_the_days_last_row(store):
     labelled = [(row.hour.astimezone(detroit).hour, row.day_mood) for row in store.recent_hourly("maya")]
     assert labelled == [(8, None), (13, None), (23, Mood.happy), (1, None)]
     assert not store.set_day_mood("maya", day - timedelta(days=3), Mood.happy)  # no rows that day
+    log(store, "maya", day + timedelta(hours=23, minutes=40), mood=Mood.happy)  # logged after labelling
+    assert store.set_day_mood("maya", day, Mood.thirsty)  # labelling again moves the label
+    labels_that_day = [row.day_mood for row in store.recent_hourly("maya") if row.day_mood]
+    assert labels_that_day == [Mood.thirsty]
 
 
 def test_leaderboard_counts_happy_days_in_the_last_week(store):

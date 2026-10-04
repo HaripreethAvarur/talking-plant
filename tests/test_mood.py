@@ -82,7 +82,7 @@ def test_dark_units_priority_and_leaf_confirmation(reading):
     engine = MoodEngine(DAYTIME)
     for step in range(6):
         row = reading(step, "dark")
-        row.light.unit = "raw"
+        row.light.unit = "lux"  # a different unit than the profile's: ignored
         feed(engine, row)
     assert engine.state.mood == Mood.happy
     for step in range(6, 12):

@@ -45,7 +45,7 @@ def test_log_now_label_day_and_leaderboard(settings, monkeypatch):
         client.post("/api/plant", json=MAYA | {"plant_type": "plant"})
         post_reading(client, "healthy")
         row = client.post("/api/v1/care-log/log-now").json()
-        assert row["water_pct"] == 60 and row["sun_pct"] == pytest.approx(60)
+        assert row["water_pct"] == 60 and row["sun_pct"] == pytest.approx(100 * 600 / 1023)
         assert row["health"] == "Green leaves, slightly droopy."
         assert row["mood"] == "happy"  # no ASI key in tests: the live rule decides
         assert client.get("/api/v1/care-log").json()["items"][-1]["hour"] == row["hour"]

@@ -1,6 +1,9 @@
 // Mirror of the UI messages in shared/contracts.py (schemas in shared/schemas/). Keep in sync.
 
-export type Mood = "happy" | "thirsty" | "too_dark" | "unwell" | "grateful";
+export type Mood = "happy" | "thirsty" | "soggy" | "too_dark" | "sleepy" | "unwell" | "grateful";
+
+/** What the character shows: a mood, or "offline" while the sensors aren't reporting. */
+export type Face = Mood | "offline";
 
 export interface PlantState {
   type: "plant_state";
@@ -9,6 +12,7 @@ export interface PlantState {
   moisture_pct: number | null;
   light_pct: number | null;
   leaf_issues: string[] | null; // null: the camera has no recent look
+  looks?: string | null; // the camera's latest description of the plant
   ts: number;
   sensor_health?: string;
   light_value?: number | null;
@@ -47,5 +51,35 @@ export interface Health {
   tts: boolean;
   llm: boolean;
   plant: { name: string; species: string };
+  registered?: boolean;
+  username?: string | null;
+  database?: boolean;
+  thresholds?: { dry: number; soggy: number };
   quick_questions: string[];
+  demo_mode?: boolean;
+}
+
+export type PlantType = "succulent" | "plant" | "tree";
+
+export interface PlantRegistration {
+  username: string;
+  plant_name: string;
+  plant_type: PlantType;
+  location: string; // US ZIP code
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  username: string;
+  plant_name: string;
+  plant_type: PlantType;
+  location: string;
+  happy_days: number;
+  score: number;
+}
+
+export interface Leaderboard {
+  days: number;
+  you: string | null;
+  entries: LeaderboardEntry[];
 }

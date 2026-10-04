@@ -16,7 +16,7 @@
   "light": {
     "schema_version": "1.0",
     "value": 600.0,
-    "unit": "lux",
+    "unit": "raw",
     "status": "ok"
   }
 }

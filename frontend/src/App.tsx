@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ChildUtterance, Health, ListenRequest, SpeechAudio } from "./contracts";
+import { api } from "./api";
+import type { ChildUtterance, Face, Health, ListenRequest, SpeechAudio } from "./contracts";
+import { DemoPanel } from "./components/DemoPanel";
 import { Gauge } from "./components/Gauge";
+import { LeaderboardPanel } from "./components/LeaderboardPanel";
 import { PlantCharacter } from "./components/PlantCharacter";
+import { SignUp } from "./components/SignUp";
 import { TalkPanel } from "./components/TalkPanel";
 import { usePlantSocket } from "./hooks/usePlantSocket";
 import { usePlantVoice } from "./hooks/usePlantVoice";
 import { usePushToTalk } from "./hooks/usePushToTalk";
 
-// Display thresholds for the gauges; the agent's own thresholds come from the plant profile (Task 6).
-const MOISTURE_LOW = 30;
-const LIGHT_LOW = 20;
+const LIGHT_LOW = 20; // display only; the mood engine uses the profile's raw-light thresholds
+const OFFLINE_HEALTH = ["missing", "disconnected", "stale"];
 
 const FALLBACK_HEALTH: Health = {
   stt: false,
@@ -20,9 +23,11 @@ const FALLBACK_HEALTH: Health = {
 };
 
 export default function App() {
-  const [health, setHealth] = useState<Health>(FALLBACK_HEALTH);
+  const [health, setHealth] = useState<Health | null>(null);
   const [plantLine, setPlantLine] = useState<string | null>(null);
   const [childLine, setChildLine] = useState<string | null>(null);
+  const [showBoard, setShowBoard] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
 
   const voice = usePlantVoice();
   const talkRef = useRef<ReturnType<typeof usePushToTalk> | null>(null);
@@ -46,36 +51,58 @@ export default function App() {
 
   useEffect(() => { if (!connected) talk.cancel(); }, [connected, talk.cancel]);
 
-  useEffect(() => {
-    const token = sessionStorage.getItem("plantViewerToken");
-    fetch("/api/health", { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then((r) => { if (!r.ok) throw new Error("Health unavailable"); return r.json(); })
-      .then(setHealth)
-      .catch(() => setHealth(FALLBACK_HEALTH));
-  }, [connected]);
+  const loadHealth = useCallback(() => {
+    api<Health>("/api/health").then(setHealth).catch(() => setHealth(FALLBACK_HEALTH));
+  }, []);
+  useEffect(loadHealth, [connected, loadHealth]);
 
   useEffect(() => {
     if (state?.message) setPlantLine(state.message);
   }, [state]);
 
-  const mood = state?.mood ?? "happy";
+  // Shift+D toggles the hidden demo controls.
+  useEffect(() => {
+    const toggle = (e: KeyboardEvent) => {
+      if (e.shiftKey && e.key.toLowerCase() === "d" && (e.target as HTMLElement)?.tagName !== "INPUT") {
+        setShowDemo((shown) => !shown);
+      }
+    };
+    window.addEventListener("keydown", toggle);
+    return () => window.removeEventListener("keydown", toggle);
+  }, []);
+
+  const info = health ?? FALLBACK_HEALTH;
+  const offline = !state || OFFLINE_HEALTH.includes(state.sensor_health ?? "missing");
+  // An old line ("Thank you!") shouldn't linger once the sensors stop; later replies still show.
+  useEffect(() => { if (offline) setPlantLine(null); }, [offline]);
+  const face: Face = offline ? "offline" : state.mood;
+  const needsSignUp = health?.registered === false;
 
   return (
-    <main className={`app mood-${mood}`}>
-      {!voice.unlocked && (
+    <main className={`app mood-${face}`}>
+      {needsSignUp && <SignUp onDone={loadHealth} />}
+      {!needsSignUp && !voice.unlocked && (
         <button className="wake-overlay" onClick={async () => { await voice.unlock(); await talk.prepare(); }}>
           <span className="wake-emoji" aria-hidden>🪴</span>
-          Tap to wake up {health.plant.name} and enable the microphone!
+          Tap to wake up {info.plant.name} and enable the microphone!
         </button>
       )}
+      {showBoard && <LeaderboardPanel onClose={() => setShowBoard(false)} />}
+      {showDemo && <DemoPanel demoMode={!!info.demo_mode} onClose={() => setShowDemo(false)} />}
 
       <header className="top-bar">
-        <h1>{health.plant.name}</h1>
+        <h1>{info.plant.name}</h1>
+        {info.database && (
+          <button className="board-button" onClick={() => setShowBoard(true)} aria-label="Leaderboard">🏆</button>
+        )}
         <span className={`conn ${connected ? "conn-on" : "conn-off"}`} title={connected ? "Connected to the plant" : "Reconnecting…"} />
       </header>
 
       <section className="stage">
         <div className="bubbles">
+          {offline && !plantLine && (
+            <div className="bubble bubble-plant">I can't feel my roots right now. Is my sensor plugged in?</div>
+          )}
           {plantLine && (
             <div key={plantLine} className={`bubble bubble-plant ${voice.speaking ? "bubble-speaking" : ""}`}>
               {plantLine}
@@ -83,19 +110,20 @@ export default function App() {
           )}
           {childLine && <div className="bubble bubble-child">You asked: “{childLine}”</div>}
         </div>
-        <PlantCharacter mood={mood} speaking={voice.speaking} level={voice.level} />
+        <PlantCharacter face={face} speaking={voice.speaking} level={voice.level} />
       </section>
 
       <section className="gauges">
-        <Gauge label="Water" icon="💧" value={state?.moisture_pct ?? null} low={MOISTURE_LOW} color="var(--water)" />
+        <Gauge label="Water" icon="💧" value={state?.moisture_pct ?? null}
+          low={info.thresholds?.dry ?? 30} high={info.thresholds?.soggy} color="var(--water)" />
         <Gauge label="Sunlight" icon="☀️" value={state?.light_pct ?? null} low={LIGHT_LOW} color="var(--sun)" />
       </section>
 
       <TalkPanel
         status={talk.status}
         error={talk.error}
-        sttAvailable={health.stt}
-        quickQuestions={health.quick_questions}
+        sttAvailable={info.stt}
+        quickQuestions={info.quick_questions}
         onPressStart={() => { voice.stop(); void talk.start(); }}
         onPressEnd={talk.stop}
         onQuestion={(q) => ask(q, "button")}

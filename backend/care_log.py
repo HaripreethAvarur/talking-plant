@@ -133,8 +133,8 @@ class CareLog:
             log.info("Labelled %s as %s; purged %s", day, mood.value, removed)
         last = rows[-1].hour
         for index, row in enumerate(self.recent):
-            if row.hour == last:
-                self.recent[index] = row.model_copy(update={"day_mood": mood})
+            if start <= row.hour < end:
+                self.recent[index] = row.model_copy(update={"day_mood": mood if row.hour == last else None})
         return mood
 
     def _label_due(self, now: datetime) -> date | None:

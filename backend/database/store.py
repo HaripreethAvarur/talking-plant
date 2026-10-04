@@ -192,17 +192,16 @@ class Store:
         ]
 
     def set_day_mood(self, username: str, day_start: datetime, mood) -> bool:
-        """Label a day: write day_mood on that day's last logged row. False if the day has no rows."""
+        """Label a day: write day_mood on that day's last logged row, clearing any earlier label
+        so a re-labelled day still counts once. False if the day has no rows."""
         day_start = _utc(day_start)
         day_end = day_start + timedelta(days=1)
+        that_day = (hourly.c.username == username, hourly.c.hour >= day_start, hourly.c.hour < day_end)
         with self.engine.begin() as conn:
-            last = conn.execute(
-                select(func.max(hourly.c.hour)).where(
-                    hourly.c.username == username, hourly.c.hour >= day_start, hourly.c.hour < day_end
-                )
-            ).scalar()
+            last = conn.execute(select(func.max(hourly.c.hour)).where(*that_day)).scalar()
             if last is None:
                 return False
+            conn.execute(update(hourly).where(*that_day).values(day_mood=None))
             conn.execute(
                 update(hourly)
                 .where(hourly.c.username == username, hourly.c.hour == last)

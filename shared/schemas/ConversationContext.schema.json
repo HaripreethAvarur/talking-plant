@@ -661,19 +661,19 @@
           "type": "number"
         },
         "dark_enter": {
-          "default": 100,
+          "default": 200,
           "minimum": 0,
           "title": "Dark Enter",
           "type": "number"
         },
         "dark_exit": {
-          "default": 150,
+          "default": 300,
           "minimum": 0,
           "title": "Dark Exit",
           "type": "number"
         },
         "light_unit": {
-          "default": "lux",
+          "default": "raw",
           "enum": [
             "lux",
             "raw"

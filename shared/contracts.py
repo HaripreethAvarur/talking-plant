@@ -160,9 +160,10 @@ class Thresholds(Contract):
     dry_enter: Percent = 30
     dry_exit: Percent = 40
     dry_seconds: float = Field(default=3, ge=0)
-    dark_enter: float = Field(default=100, ge=0)
-    dark_exit: float = Field(default=150, ge=0)
-    light_unit: Literal["lux", "raw"] = "lux"
+    # Raw 0-1023 ADC counts from the Arduino light sensor (not lux).
+    dark_enter: float = Field(default=200, ge=0)
+    dark_exit: float = Field(default=300, ge=0)
+    light_unit: Literal["lux", "raw"] = "raw"
     dark_seconds: float = Field(default=3, ge=0)
     watering_rise: float = Field(default=20, gt=0, le=100)
     watering_window: float = Field(default=30, gt=0)
