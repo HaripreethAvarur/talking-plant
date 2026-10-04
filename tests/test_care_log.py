@@ -1,23 +1,50 @@
-"""Schema v2: kids' plants, the hourly care log, day labels, the leaderboard and purging."""
+"""Schema v2: kids' plants, the hourly care log, day labels, the leaderboard and purging.
 
+Runs on SQLite. To also run on Postgres/Neon, set TEST_DATABASE_URL to a THROWAWAY
+database (e.g. a Neon test branch): every table in it is dropped before and after each test.
+"""
+
+import os
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 from sqlalchemy import delete, insert, select
 
+from backend.config import get_settings
 from backend.database.migrate import MIGRATIONS, migrate
 from backend.database.schema import hourly, metadata, plants, records, versions
 from backend.database.store import Store
 from shared.contracts import HourlyReading, Mood, PlantRegistration
 
 NOW = datetime(2026, 10, 10, 18, 30, tzinfo=timezone.utc)
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "")
+
+
+def drop_everything(settings):
+    store = Store(settings)
+    metadata.drop_all(store.engine)
+    store.close()
 
 
 @pytest.fixture
-def store(settings):
-    store = Store(settings)
+def db_settings(settings):
+    """SQLite by default; the throwaway TEST_DATABASE_URL when set (never the app's database)."""
+    if not TEST_DATABASE_URL:
+        yield settings
+        return
+    if TEST_DATABASE_URL == get_settings().database_url.get_secret_value():
+        pytest.exit("TEST_DATABASE_URL is the app's DATABASE_URL; refusing to drop its tables.")
+    settings.database_url = SecretStr(TEST_DATABASE_URL)
+    drop_everything(settings)
+    yield settings
+    drop_everything(settings)
+
+
+@pytest.fixture
+def store(db_settings):
+    store = Store(db_settings)
     migrate(store.engine)
     yield store
     store.close()
@@ -35,8 +62,8 @@ def log(store, username, hour, **values):
     store.add_hourly(HourlyReading(username=username, hour=hour, **values))
 
 
-def test_existing_v1_database_gains_v2_tables(settings):
-    store = Store(settings)
+def test_existing_v1_database_gains_v2_tables(db_settings):
+    store = Store(db_settings)
     with store.engine.begin() as conn:  # a database created before this change
         versions.create(conn)
         metadata.create_all(conn, tables=MIGRATIONS[1])
