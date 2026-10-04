@@ -1,0 +1,118 @@
+{
+  "$defs": {
+    "Mood": {
+      "enum": [
+        "happy",
+        "thirsty",
+        "too_dark",
+        "unwell",
+        "grateful"
+      ],
+      "title": "Mood",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One row per plant per hour. mood is ASI's label for the hour; day_mood is set only\non the last row of each day, by the nightly job, and feeds the leaderboard.",
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "username": {
+      "pattern": "^[A-Za-z0-9_.-]{2,32}$",
+      "title": "Username",
+      "type": "string"
+    },
+    "hour": {
+      "format": "date-time",
+      "title": "Hour",
+      "type": "string"
+    },
+    "sun_pct": {
+      "anyOf": [
+        {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sun Pct"
+    },
+    "water_pct": {
+      "anyOf": [
+        {
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Water Pct"
+    },
+    "air_aqi": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Air Aqi"
+    },
+    "health": {
+      "anyOf": [
+        {
+          "maxLength": 1000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Ollama's description of the photo",
+      "title": "Health"
+    },
+    "mood": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Mood"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "day_mood": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Mood"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "username",
+    "hour"
+  ],
+  "title": "HourlyReading",
+  "type": "object"
+}

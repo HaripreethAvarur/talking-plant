@@ -233,6 +233,61 @@ class StreamMessage(Contract):
 
 
 # ===================================================================
+# Kid's plant, hourly care log (rolling 30 days) and weekly leaderboard
+# ===================================================================
+
+
+class PlantType(str, Enum):
+    """Moisture needs differ by category; per-species thresholds aren't publicly available."""
+
+    succulent = "succulent"
+    plant = "plant"
+    tree = "tree"
+
+
+Username = Annotated[str, Field(pattern=r"^[A-Za-z0-9_.-]{2,32}$")]
+
+
+class PlantRegistration(Contract):
+    """One row per kid and plant. No login: the username is the identity."""
+
+    username: Username
+    plant_name: str = Field(min_length=1, max_length=40)
+    plant_type: PlantType
+    location: str = Field(pattern=r"^\d{5}$", description="US ZIP code, used for local air quality")
+    created_at: AwareDatetime = Field(default_factory=utcnow)
+
+
+class HourlyReading(Contract):
+    """One row per plant per hour. mood is ASI's label for the hour; day_mood is set only
+    on the last row of each day, by the nightly job, and feeds the leaderboard."""
+
+    username: Username
+    hour: AwareDatetime
+    sun_pct: Percent | None = None
+    water_pct: Percent | None = None
+    air_aqi: Annotated[float, Field(ge=0)] | None = None
+    health: str | None = Field(default=None, max_length=1000, description="Ollama's description of the photo")
+    mood: Mood | None = None
+    day_mood: Mood | None = None
+
+    @field_validator("hour")
+    @classmethod
+    def whole_hour(cls, value):
+        return value.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+
+
+class LeaderboardEntry(Contract):
+    rank: int = Field(ge=1)
+    username: Username
+    plant_name: str
+    plant_type: PlantType
+    location: str
+    happy_days: int = Field(ge=0, le=7)
+    score: Proportion = Field(description="happy_days / 7 over the last 7 days")
+
+
+# ===================================================================
 # UI WebSocket messages (backend/ui.py <-> frontend/src/contracts.ts)
 # ===================================================================
 

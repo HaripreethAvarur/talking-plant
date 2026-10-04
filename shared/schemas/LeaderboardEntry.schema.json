@@ -1,0 +1,68 @@
+{
+  "$defs": {
+    "PlantType": {
+      "description": "Moisture needs differ by category; per-species thresholds aren't publicly available.",
+      "enum": [
+        "succulent",
+        "plant",
+        "tree"
+      ],
+      "title": "PlantType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "rank": {
+      "minimum": 1,
+      "title": "Rank",
+      "type": "integer"
+    },
+    "username": {
+      "pattern": "^[A-Za-z0-9_.-]{2,32}$",
+      "title": "Username",
+      "type": "string"
+    },
+    "plant_name": {
+      "title": "Plant Name",
+      "type": "string"
+    },
+    "plant_type": {
+      "$ref": "#/$defs/PlantType"
+    },
+    "location": {
+      "title": "Location",
+      "type": "string"
+    },
+    "happy_days": {
+      "maximum": 7,
+      "minimum": 0,
+      "title": "Happy Days",
+      "type": "integer"
+    },
+    "score": {
+      "default": 0.25,
+      "description": "happy_days / 7 over the last 7 days",
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Score",
+      "type": "number"
+    }
+  },
+  "required": [
+    "rank",
+    "username",
+    "plant_name",
+    "plant_type",
+    "location",
+    "happy_days"
+  ],
+  "title": "LeaderboardEntry",
+  "type": "object"
+}

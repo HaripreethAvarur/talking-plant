@@ -138,6 +138,9 @@ JSON schemas are in `shared/schemas/`; exact sample JSON is in `shared/samples/`
 | SpeechAudio | `/ws` frame: text plus a cached `/audio/...` URL, or null for browser speech |
 | ChildUtterance | Sent by the UI on `/ws`: question text and source (`stt`, `button`, `typed`) |
 | ListenRequest | `/ws` frame asking the first UI to record for `duration_ms` after a touch |
+| PlantRegistration | A kid's plant: username (the identity, no login), plant name, type (`succulent`, `plant`, `tree`), US ZIP |
+| HourlyReading | One hour of the care log: sun %, water %, air AQI, Ollama's health text, ASI's mood label, and `day_mood` on the day's last row |
+| LeaderboardEntry | Rank, plant, and happy days in the last 7 (score = happy days / 7) |
 
 Every sensor-side contract has `schema_version="1.0"`; unknown fields/versions are rejected. Timestamps
 must include a timezone. `source` distinguishes mock, replay, hardware, image_file and backend;
@@ -157,3 +160,15 @@ for transcription without storing it in our database.
 
 `GET /context` returns the profile, state and recent events used for replies. `/docs`
 provides OpenAPI.
+
+## Database tables
+
+Migration 1 (live pipeline): `plant_profiles`, `care_records` (every observation and
+event as JSON) and `plant_checkpoints`. Migration 2 (care log): `plants`, keyed by
+username, and `hourly_readings`, one row per plant per hour, unique on
+`(username, hour)` and deleted with its plant.
+
+`Store.purge(now)` keeps 30 days of hourly rows and care events, and 24 hours of raw
+per-second sensor, touch and leaf records (they only need to outlive restart
+de-duplication). The leaderboard counts days whose `day_mood` is `happy` or `grateful`
+within the last 7 days; plants with equal counts share a rank.

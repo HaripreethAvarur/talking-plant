@@ -2,16 +2,22 @@
 
 from sqlalchemy import select
 
-from backend.database.schema import checkpoints, metadata, profiles, records, versions
+from backend.database.schema import checkpoints, hourly, metadata, plants, profiles, records, versions
+
+MIGRATIONS = {
+    1: [profiles, records, checkpoints],
+    2: [plants, hourly],
+}
 
 
 def migrate(engine):
     with engine.begin() as conn:
         versions.create(conn, checkfirst=True)
         applied = set(conn.execute(select(versions.c.version)).scalars())
-        if 1 not in applied:
-            metadata.create_all(conn, tables=[profiles, records, checkpoints])
-            conn.execute(versions.insert().values(version=1))
+        for version, tables in sorted(MIGRATIONS.items()):
+            if version not in applied:
+                metadata.create_all(conn, tables=tables)
+                conn.execute(versions.insert().values(version=version))
 
 
 def main():
@@ -29,7 +35,7 @@ def main():
         ) from None
     finally:
         store.close()
-    print("Database schema is at version 1.")
+    print(f"Database schema is at version {max(MIGRATIONS)}.")
 
 
 if __name__ == "__main__":

@@ -10,11 +10,14 @@ from backend.sensors.simulator import scenario_reading
 from shared.contracts import (
     ChildUtterance,
     ConversationContext,
+    HourlyReading,
+    LeaderboardEntry,
     LeafObservation,
     ListenRequest,
     Mood,
     PlantEvent,
     PlantProfile,
+    PlantRegistration,
     PlantState,
     Source,
     SpeechAudio,
@@ -102,6 +105,31 @@ def main():
             ts=ts,
         ),
         SpeechAudio(text=MOOD_LINES[Mood.thirsty], audio_url="/audio/0123456789abcdef01234567.mp3", ts=ts),
+        PlantRegistration(
+            username="maya",
+            plant_name="Captain America",
+            plant_type="succulent",
+            location="48105",
+            created_at=at,
+        ),
+        HourlyReading(
+            username="maya",
+            hour=at,
+            sun_pct=62,
+            water_pct=15,
+            air_aqi=31,
+            health="A small green succulent; the lower leaves look slightly wrinkled.",
+            mood=Mood.thirsty,
+        ),
+        LeaderboardEntry(
+            rank=1,
+            username="maya",
+            plant_name="Captain America",
+            plant_type="succulent",
+            location="48105",
+            happy_days=5,
+            score=5 / 7,
+        ),
     ]
     for obj in samples:
         name = type(obj).__name__
